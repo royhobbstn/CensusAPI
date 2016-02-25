@@ -1,0 +1,29 @@
+{
+  "name": "census_api",
+  "version": "0.0.1",
+  "description": "microservices to query nationwide census data from the colorado state demography office online database",
+  "main": "demog.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/royhobbstn/MS_CensusAPI.git"
+  },
+  "keywords": [
+    "census",
+    "acs",
+    "demography",
+    "api"
+  ],
+  "author": "daniel trone",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/royhobbstn/MS_CensusAPI/issues"
+  },
+  "homepage": "https://github.com/royhobbstn/MS_CensusAPI#readme",
+  "dependencies": {
+    "express": "^4.13.4",
+    "pg": "^4.5.1"
+  }
+}
