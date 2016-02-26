@@ -679,7 +679,7 @@ var sql = "SELECT geoname, geonum, " + field + ", st_asgeojson(st_transform(ST_S
     
     console.log(sql);
   
- //sendtodatabase(sql);  
+ sendtodatabase(sql);  
   
     
 }
@@ -703,13 +703,14 @@ var sql = "SELECT geoname, geonum, " + field + ", st_asgeojson(st_transform(ST_S
               
               var resultdata=result.rows;
 
+              //console.log(resultdata);
               
-              for(var t=0;t<resultdata.length;t++){
-
-                
-// Build GeoJSON
+              
+              // Build GeoJSON
 var output    = '';
 var rowOutput = '';
+              
+              for(var t=0;t<resultdata.length;t++){
 
     rowOutput = (rowOutput.length > 0 ? ',' : '') + '{"type": "Feature", "geometry": ' + resultdata[t]['geojson'] + ', "properties": {';
     var props = '';
@@ -717,7 +718,7 @@ var rowOutput = '';
 
     
     for (var key in resultdata[t]) {
-      if (p.hasOwnProperty(key)) {
+      if (resultdata[t].hasOwnProperty(key)) {
         
         if (key !== "geojson") {
             props = props + (props.length > 0 ? ',' : '') + '"' + key + '":"' + resultdata[t][key] + '"';
