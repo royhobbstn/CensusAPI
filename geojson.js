@@ -472,6 +472,11 @@ if(zoom==16){tolerance=0.0001;}
   
   
   //if no fields are selected (then a table must be).  Create fields list based on the given table.
+  
+  //CRITICAL - FOR FASTEST PERFORMANCE, explicitly name fields.  
+  //Otherwise, you must go through this loop to look up fields by querying database.
+  //OPTION: perhaps conditionally load table-field lookup server-side
+  //table lookup adds around 250ms to 300ms extra
 if (field === "undefined"){
   
 if (table !== "undefined"){
