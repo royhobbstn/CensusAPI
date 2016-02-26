@@ -24,6 +24,7 @@
   "homepage": "https://github.com/royhobbstn/MS_CensusAPI#readme",
   "dependencies": {
     "express": "^4.13.4",
+    "express-csv": "^0.6.0",
     "pg": "^4.5.1"
   }
 }
