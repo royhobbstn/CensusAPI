@@ -5,31 +5,12 @@
 { source: 'acs1014', schema: 'data', tablemeta:  [ { table_id: 'b19013', table_title: 'MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2014 INFLATION-ADJUSTED DOLLARS)', universe: 'Universe:  Households' } ],  fieldmeta: [ { column_id: 'b19013001', column_title: 'Median household income in the past 12 months (in 2014 Inflation-adjusted dollars)' } ], data: [ { geoname: 'Eagle County, Colorado', state: '8', county: '37',  place: null, tract: null, bg: null, geonum: '108037', b19013001: '73774', b19013_moe001: '5282' }, { geoname: 'Elbert County, Colorado', state: '8', county: '39', place: null, tract: null, bg: null, geonum: '108039', b19013001: '82154', b19013_moe001: '4193' } ], error: [] }
 */
 
-
-//node modules
-var express = require('express');
-var app = express();
-var pg = require('pg');
-var csv = require('express-csv');
-
-
-
-var conString = "postgres://codemog:demography@104.197.26.248:5432/acs1014";
-var lastbranchdone=0;
-
-var allowCrossDomain = function(req, res, next) {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
-
-    next();
-}
-
-
-app.use(allowCrossDomain);
+module.exports = function(app, pg, csv, conString){
 
 
 app.get('/geojson', function(req, res) {
 
+  var lastbranchdone=0;
 
 //PHP.js
 function strpos(haystack, needle, offset) {
@@ -680,7 +661,7 @@ bbstr=geo + "." + geodesc + ".geom && ST_MakeEnvelope(" + bb + ", 4326) and ";
 
   //CONSTRUCT MAIN SQL STATEMENT
 // execute query
-var sql = "SELECT geoname, geonum, " + field + ", st_asgeojson(st_transform(ST_Simplify((\"geom\")," + tolerance + "),4326)) AS geojson from " + geo + "." + geodesc + " " + jointablelist + " where " + bbstr + " " + joinlist + " limit " + limit + ";";
+var sql = "SELECT geoname, geonum, " + field + ", st_asgeojson(st_transform(ST_Simplify((\"geom\")," + tolerance + "),4326),4) AS geojson from " + geo + "." + geodesc + " " + jointablelist + " where " + bbstr + " " + joinlist + " limit " + limit + ";";
     
     console.log(sql);
   
@@ -708,8 +689,6 @@ var sql = "SELECT geoname, geonum, " + field + ", st_asgeojson(st_transform(ST_S
               
               var resultdata=result.rows;
 
-              //console.log(resultdata);
-              
               
               // Build GeoJSON
 var output    = '';
@@ -799,8 +778,4 @@ var arroutput = '{ "type": "FeatureCollection", "features": [ ' + output + ' ]}'
 });
 
 
-var server = app.listen(4000, function() {
-    var host = server.address().address;
-    var port = server.address().port;
-    console.log('Example app listening at http://', host, port);
-});
+}

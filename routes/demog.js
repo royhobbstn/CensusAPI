@@ -5,27 +5,7 @@
 { source: 'acs1014', schema: 'data', tablemeta:  [ { table_id: 'b19013', table_title: 'MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2014 INFLATION-ADJUSTED DOLLARS)', universe: 'Universe:  Households' } ],  fieldmeta: [ { column_id: 'b19013001', column_title: 'Median household income in the past 12 months (in 2014 Inflation-adjusted dollars)' } ], data: [ { geoname: 'Eagle County, Colorado', state: '8', county: '37',  place: null, tract: null, bg: null, geonum: '108037', b19013001: '73774', b19013_moe001: '5282' }, { geoname: 'Elbert County, Colorado', state: '8', county: '39', place: null, tract: null, bg: null, geonum: '108039', b19013001: '82154', b19013_moe001: '4193' } ], error: [] }
 */
 
-
-//node modules
-var express = require('express');
-var app = express();
-var pg = require('pg');
-var csv = require('express-csv');
-
-
-
-var conString = "postgres://codemog:demography@104.197.26.248:5432/acs1014";
-var lastbranchdone=0;
-
-var allowCrossDomain = function(req, res, next) {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
-
-    next();
-}
-
-
-app.use(allowCrossDomain);
+module.exports = function(app, pg, csv, conString){
 
 
 app.get('/demog', function(req, res) {
@@ -390,6 +370,7 @@ function array_unshift(array) {
   return arguments[0].length;
 }  
   
+  
 //potential multi select (comma delimited list)
   var field = req.query.field || "undefined";
   var state = req.query.state || "undefined";  
@@ -399,8 +380,7 @@ function array_unshift(array) {
   var sumlev = req.query.sumlev || "undefined";
   var table = req.query.table || "undefined";
 
-  
-  
+    
  //potential single select
 var type = req.query.type || 'json';
 var db = req.query.db || 'acs1014';
@@ -989,9 +969,4 @@ return;
   
 });
 
-
-var server = app.listen(4000, function() {
-    var host = server.address().address;
-    var port = server.address().port;
-    console.log('Example app listening at http://', host, port);
-});
+}

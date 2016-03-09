@@ -1,8 +1,8 @@
 {
   "name": "census_api",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "microservices to query nationwide census data from the colorado state demography office online database",
-  "main": "demog.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
