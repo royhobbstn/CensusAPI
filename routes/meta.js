@@ -23,7 +23,7 @@ app.get('/meta', function(req, res) {
 
     function sendtodatabase(sqlstring) {
 
-        var client = new pg.Client(conString);
+        var client = new pg.Client(conString+db);
 
         client.connect(function(err) {
 
