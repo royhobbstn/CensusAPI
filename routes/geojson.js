@@ -390,7 +390,10 @@ var schema = req.query.schema ||  function(){
   return '';  //no valid database - will deal with later 
 };
   
-  conString = "postgres://codemog:demography@104.197.26.248:5432/" + db;
+  var port='5432';
+  if(db==='acs1014'){port='5433';}
+  
+  conString = "postgres://codemog:demography@104.197.26.248:" + port + "/" + db;
   
   //carto or tiger or nhgis
 var geo=""; //for now, geo will be set as a default

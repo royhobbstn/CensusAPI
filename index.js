@@ -5,7 +5,7 @@ var app = express();
 var pg = require('pg');
 var csv = require('express-csv');
 
-var conString = "postgres://codemog:demography@104.197.26.248:5432/";
+var conString = "postgres://codemog:demography@gis.dola.colorado.gov:5432/";
 
 var allowCrossDomain = function(req, res, next) {
     res.header('Access-Control-Allow-Origin', '*');
