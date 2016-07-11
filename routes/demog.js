@@ -819,7 +819,8 @@ return;
 
 
     function sendtodatabase(sqlstring) {
-
+      
+       console.log(sqlstring);
         var client = new pg.Client(conString);
       console.log("a:", conString);
 
@@ -872,6 +873,7 @@ return;
 
      function sendinternal(sqlstring, branch) {
 
+       console.log(sqlstring);
         var client = new pg.Client(conString);
       console.log("b:", conString);
        
