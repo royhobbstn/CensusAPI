@@ -388,7 +388,7 @@ var schema = req.query.schema ||  function(){
   if(db==='acs1014' || db==='acs0913' || db==='acs0812' || db==='c2010'){return 'data';}
   if(db==='c2000' || db==='c1990' || db==='c1980'){return 'sf1';}  
   return '';  //no valid database - will deal with later 
-};
+}();
   
   var port='5432';
   if(db==='acs1014'){port='5433';}
