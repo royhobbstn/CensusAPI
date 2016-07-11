@@ -401,7 +401,7 @@ var schema = req.query.schema ||  function(){
 
 //if database is acs, check to see if moe option is flagged
 var moe='no';
-if(db=='acs0812' || db=='acs0913' || db=='acs1014'){
+if(db==='acs0812' || db==='acs0913' || db==='acs1014'){
   if (req.query.moe){
     moe=req.query.moe;
   }
@@ -821,6 +821,7 @@ return;
     function sendtodatabase(sqlstring) {
 
         var client = new pg.Client(conString);
+      console.log("a:", conString);
 
         client.connect(function(err) {
 
@@ -872,7 +873,8 @@ return;
      function sendinternal(sqlstring, branch) {
 
         var client = new pg.Client(conString);
-
+      console.log("b:", conString);
+       
         client.connect(function(err) {
 
             if (err) {
