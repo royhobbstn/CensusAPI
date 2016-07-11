@@ -431,6 +431,7 @@ if(db==='acs0812' || db==='acs0913' || db==='acs1014'){
   //<>
   var ttlfields = [];
   
+  var lastbranchdone = 0;
   
   
 //push $_POST vars into simple array for each $key
