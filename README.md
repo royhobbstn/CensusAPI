@@ -48,17 +48,17 @@ Here is an inventory of the files in this repo:
 example:
 (return csv of sex by age table from acs0812 for delaware)
 
-/demog?db=acs0812&table=b01001&sumlev=140&state=10&type=csv
+https://gis.dola.colorado.gov/capi/demog?db=acs0812&table=b01001&sumlev=140&state=10&type=csv
 
 example:
 (return json for median home value for 1980 census for places in vermont)
 
-/demog?db=c1980&table=t38&sumlev=160&state=50
+https://gis.dola.colorado.gov/capi/demog?db=c1980&table=t38&sumlev=160&state=50
 
 example:
 (return json for median age for 2010 census for San Luis Obispo, CA)
 
-/demog?db=c2010&table=p13&geonum=10668154
+https://gis.dola.colorado.gov/capi/demog?db=c2010&table=p13&geonum=10668154
 
 
 <h2>General API Instructions - geojson.js</h2>
@@ -98,7 +98,7 @@ example:
 example query: 
 (counties in colorado that intersect a specific bounding box, plus data from table p1 of 1990 census)
 
-/geojson?table=p1&sumlev=50&db=c1990&state=8&bb=-105,40,-104,39&zoom=10
+https://gis.dola.colorado.gov/capi/geojson?table=p1&sumlev=50&db=c1990&state=8&bb=-105,40,-104,39&zoom=10
 
 
 <h2>General API Instructions - meta.js</h2>
@@ -114,4 +114,4 @@ example query:
 example query:
 (table metadata for 1990 Census Summary File 1)
 
-/meta?db=c1990&schema=sf1
+https://gis.dola.colorado.gov/capi/meta?db=c1990&schema=sf1
