@@ -18,7 +18,7 @@ Here is an inventory of the files in this repo:
 
 <h3>Parameters</h3>
 
-<b>db</b>: currently valid are acs0913, acs0812, c2010, c2000, c1990, c1980.  Default is acs0913
+<b>db</b>: currently valid are acs1014, acs0913, acs0812, c2010, c2000, c1990, c1980.  Default is acs0913
 
 <b>type</b>: json or csv   (default is json)
 
@@ -67,7 +67,7 @@ https://gis.dola.colorado.gov/capi/demog?db=c2010&table=p13&geonum=10668154
 
 <h3>Parameters</h3>
 
-<b>db</b>: currently valid are acs0913, acs0812, c2010, c2000, c1990, c1980.  Default is acs0913
+<b>db</b>: currently valid are acs1014, acs0913, acs0812, c2010, c2000, c1990, c1980.  Default is acs0913
 
 <b>schema</b>: no need to specify if using acs or 2010 census.  specify sf1 or sf3 for 1980, 1990, and 2000 census.  If you don't specify it will assume sf1.
 
@@ -107,7 +107,7 @@ https://gis.dola.colorado.gov/capi/geojson?table=p1&sumlev=50&db=c1990&state=8&b
 
 <h3>Parameters</h3>
 
-<b>db</b>: currently valid are acs0913, acs0812, c2010, c2000, c1990, c1980.  Required - no default
+<b>db</b>: currently valid are acs1014, acs0913, acs0812, c2010, c2000, c1990, c1980.  Required - no default
 
 <b>schema</b>: specify 'sf1' or 'sf3' for c1980, c1990, and c2000.  Specify 'data' for c2010, acs0913, acs0812. Required - no default
 
