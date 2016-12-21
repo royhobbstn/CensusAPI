@@ -401,7 +401,7 @@ var schema = req.query.schema ||  function(){
 
 //if database is acs, check to see if moe option is flagged
 var moe='no';
-if(db==='acs0812' || db==='acs0913' || db==='acs1014' || db='acs1115'){
+if(db==='acs0812' || db==='acs0913' || db==='acs1014' || db==='acs1115'){
   if (req.query.moe){
     moe=req.query.moe;
   }
