@@ -392,7 +392,7 @@ var schema = req.query.schema ||  function(){
 }();
   
   conString = "postgres://codemog:demography@gis.dola.colorado.gov:5433/" + db;
-  
+  console.log(conString);
   var geo = req.query.geo || "undefined"; 
   var series = req.query.series || "undefined";
   var type = req.query.type || "undefined";  
