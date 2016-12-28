@@ -11,8 +11,8 @@ module.exports = function(app, pg, conString){
 app.get('/meta', function(req, res) {
 
   //potential multi select (comma delimited list)
-  var db = req.query.db || "undefined";
-  var schema = req.query.schema || "undefined";  
+  var db = req.query.db || "acs1115";
+  var schema = req.query.schema || "data";  
 
   //Query metadata
   var tblsql="SELECT table_id, table_title, universe from " + schema + ".census_table_metadata;";
