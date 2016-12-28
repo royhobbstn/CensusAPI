@@ -382,7 +382,7 @@ function array_unshift(array) {
   var zoom = req.query.zoom || 16;
   var bb = req.query.bb || "undefined";
   
-var db = req.query.db || 'acs1115';
+var db = req.query.db || 'acs1014';
 //set default for schema if it is missing
 var schema = req.query.schema ||  function(){
   if(db==='acs1115' || db==='acs1014' || db==='acs0913' || db==='acs0812' || db==='c2010'){return 'data';}
