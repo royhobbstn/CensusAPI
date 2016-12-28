@@ -1,8 +1,8 @@
 //MICROSERVICE for getting data triggered by an advanced query
 
-//returns from: /demogpost?db=acs1014&schema=data&table=b19013&moe=yes&geonum=108037,108039&type=csv
+//returns from: /demogpost?db=acs1115&schema=data&table=b19013&moe=yes&geonum=108037,108039&type=csv
 /*
-{ source: 'acs1014', schema: 'data', tablemeta:  [ { table_id: 'b19013', table_title: 'MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2014 INFLATION-ADJUSTED DOLLARS)', universe: 'Universe:  Households' } ],  fieldmeta: [ { column_id: 'b19013001', column_title: 'Median household income in the past 12 months (in 2014 Inflation-adjusted dollars)' } ], data: [ { geoname: 'Eagle County, Colorado', state: '8', county: '37',  place: null, tract: null, bg: null, geonum: '108037', b19013001: '73774', b19013_moe001: '5282' }, { geoname: 'Elbert County, Colorado', state: '8', county: '39', place: null, tract: null, bg: null, geonum: '108039', b19013001: '82154', b19013_moe001: '4193' } ], error: [] }
+{ source: 'acs1115', schema: 'data', tablemeta:  [ { table_id: 'b19013', table_title: 'MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2014 INFLATION-ADJUSTED DOLLARS)', universe: 'Universe:  Households' } ],  fieldmeta: [ { column_id: 'b19013001', column_title: 'Median household income in the past 12 months (in 2014 Inflation-adjusted dollars)' } ], data: [ { geoname: 'Eagle County, Colorado', state: '8', county: '37',  place: null, tract: null, bg: null, geonum: '108037', b19013001: '73774', b19013_moe001: '5282' }, { geoname: 'Elbert County, Colorado', state: '8', county: '39', place: null, tract: null, bg: null, geonum: '108039', b19013001: '82154', b19013_moe001: '4193' } ], error: [] }
 */
 
 module.exports = function(app, pg, csv, conString){
@@ -383,7 +383,7 @@ function array_unshift(array) {
     
  //potential single select
 var type = req.query.type || 'json';
-var db = req.query.db || 'acs1014';
+var db = req.query.db || 'acs1115';
 //set default for schema if it is missing
 var schema = req.query.schema ||  function(){
   if(db==='acs1115' || db==='acs1014' || db==='acs0913' || db==='acs0812' || db==='c2010'){return 'data';}
