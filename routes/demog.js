@@ -391,7 +391,7 @@ var schema = req.query.schema ||  function(){
   return '';  //no valid database - will deal with later 
 }();
   
-  conString = "postgres://codemog:demography@gis.dola.colorado.gov:5433/" + db;
+  conString = "postgres://codemog:demography@acs-export.cudcner3avpd.us-west-2.rds.amazonaws.com:5432/" + db;
   var geo = req.query.geo || "undefined"; 
   var series = req.query.series || "undefined";
   var type = req.query.type || "undefined";  
