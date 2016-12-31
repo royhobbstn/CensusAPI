@@ -1,0 +1,7 @@
+{
+    "name": "codemog",
+    "password": "demography",
+    "host": "acs-export.cudcner3avpd.us-west-2.rds.amazonaws.com",
+    "port": "5432",
+    "db": "acs1115"
+}
