@@ -5,14 +5,13 @@
 
 
 // TODO pretty print option
+// TODO auto restart API on file save/change
+// TODO test coverage
 
 var csv = require("express-csv");
 var winston = require('winston');
 
-var strpos = require("locutus/php/strings/strpos");
-var substr_replace = require("locutus/php/strings/substr_replace");
 
-var substr = require("locutus/php/strings/substr");
 var implode = require("locutus/php/strings/implode");
 var array_merge = require("locutus/php/array/array_merge");
 var array_unshift = require("locutus/php/array/array_unshift");
@@ -64,7 +63,6 @@ module.exports = function (app, pg, conString) {
     //variables and arrays to use later
     var tablelist = []; //array of all tables used in query
     var jointablelist = ""; //working string of tables to be inserted into sql query
-    var joinlist = ""; //working string of 'where' condition to be inserted into sql query
 
     var moefields = []; //moe field array
     var tcolumns = []; //columns gathered from table(s?)
@@ -132,24 +130,17 @@ module.exports = function (app, pg, conString) {
       //if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
       if (moe) {
 
-        var pos;
-
-        for (var k = 0; k < ttlfields.length; k++) {
-          //if text _moe doesn't already occur in the field name
-          pos = strpos(ttlfields[k], '_moe');
-          if (pos === false) {
-            moefields.push(substr_replace(ttlfields[k], '_moe', -3, 0));
+        //if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
+        ttlfields.forEach(function (d) {
+          if (d.indexOf('_moe') === -1) {
+            moefields.push(d.slice(0, -3) + '_moe' + d.slice(-3));
           }
-        }
+        });
+
 
         ttlfields = array_merge(ttlfields, moefields);
 
-        //remove duplicate field names
-
-
-
         ttlfields = ttlfields.filter(onlyUnique);
-
 
         //send moe modified field list back to main field list
         field = implode(',', ttlfields);
@@ -158,9 +149,10 @@ module.exports = function (app, pg, conString) {
 
 
       //get a list of tables based upon characters in each field name  (convention: last 3 characters identify field number, previous characters are table name) 
-      for (var m = 0; m < ttlfields.length; m++) {
-        tablelist.push(substr(ttlfields[m], 0, -3));
-      }
+      ttlfields.forEach(function (d) {
+        tablelist.push(d.slice(0, -3));
+      });
+      // TODO the above does not support moe fields in field list. does it?
 
       //remove duplicate tables in array
       tablelist = tablelist.filter(onlyUnique);
@@ -176,19 +168,8 @@ module.exports = function (app, pg, conString) {
 
       //validate geonum
 
-
-
       //this is where field metadata is gathered
-      var metafieldlist = "";
-      //construct 'where' statement for column_id metadata
-      //iterate through all fields
-      for (var p = 0; p < ttlfields.length; p++) {
-        metafieldlist = metafieldlist + " column_id='" + ttlfields[p] + "' or";
-      }
-
-      //trim last trailing 'or'
-      metafieldlist = substr(metafieldlist, 0, -2);
-
+      var metafieldlist = sqlList(ttlfields, 'column_id');
 
       //Query metadata
       var metasql = "SELECT column_id, column_verbose from " + schema + ".census_column_metadata where " + metafieldlist + ";";
@@ -202,7 +183,8 @@ module.exports = function (app, pg, conString) {
 
     function main_logic() {
 
-      var joinlist;
+      var joinlist = ""; //working string of 'where' condition to be inserted into sql query
+
 
       //CASE 1:  you have a geonum
       //essentially you don't care about anything else.  just get the data for that/those geonum(s)
@@ -538,16 +520,7 @@ module.exports = function (app, pg, conString) {
 
 
             //this is where table metadata is gathered
-            var tblstr = "";
-            //construct 'where' statement for column_id metadata
-            //iterate through all fields
-            for (var p = 0; p < tablelist.length; p++) {
-              tblstr = tblstr + " table_id='" + tablelist[p] + "' or";
-            }
-
-            //trim last trailing 'or'
-            tblstr = substr(tblstr, 0, -2);
-
+            var tblstr = sqlList(tablelist, 'table_id');
 
             //Query metadata
             var tblsql = "SELECT table_id, table_title, universe from " + schema + ".census_table_metadata where" + tblstr + ";";
@@ -637,7 +610,15 @@ function makeRequest(method, url) {
 
 function sqlList(str_list, field_name) {
 
-  var list_array = str_list.split(",");
+  var list_array = [];
+
+  // will work with arrays or comma delimited strings
+  if (!Array.isArray(str_list)) {
+    list_array = str_list.split(",");
+  }
+  else {
+    list_array = str_list;
+  }
 
   var str = "";
 
@@ -645,16 +626,22 @@ function sqlList(str_list, field_name) {
     str = str + " " + field_name + "='" + d + "' or";
   });
 
-  console.log(str.slice(0, -2));
-  //trim last trailing 'or'
   return str.slice(0, -2);
 
 }
 
-
+// hrm.  similar to above.  refactor possible without being too abstract?
 function sqlListGeoID(str_list, field_name) {
 
-  var list_array = str_list.split(",");
+  var list_array = [];
+
+  // will work with arrays or comma delimited strings
+  if (!Array.isArray(str_list)) {
+    list_array = str_list.split(",");
+  }
+  else {
+    list_array = str_list;
+  }
 
   var str = "";
 
@@ -662,15 +649,13 @@ function sqlListGeoID(str_list, field_name) {
     str = str + " " + field_name + "='1" + d + "' or";
   });
 
-  console.log(str.slice(0, -2));
-  //trim last trailing 'or'
   return str.slice(0, -2);
 
 }
 
 
 function validateDB(db, error) {
-  //validate database
+  // validate database
   if (db !== 'c1980' && db !== 'c1990' && db !== 'c2000' && db !== 'c2010' && db !== 'acs0812' && db !== 'acs0913' && db !== 'acs1014' && db !== 'acs1115') {
     error.push('Your database choice `' + db + '` is not valid.');
     return false;
@@ -696,8 +681,7 @@ function setDefaultSchema(db) {
 
 function getMOE(db, moe) {
   //if database is acs, check to see if moe option is flagged
-  // TODO, just check first three letters of db
-  if (db === 'acs0812' || db === 'acs0913' || db === 'acs1014' || db === 'acs1115') {
+  if (db.slice(0, 3) === 'acs') {
     if (moe === 'yes' || moe === 'y' || moe === 'true') {
       return true;
     }
