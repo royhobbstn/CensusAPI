@@ -12,10 +12,6 @@ var csv = require("express-csv");
 var winston = require('winston');
 
 
-var implode = require("locutus/php/strings/implode");
-var array_merge = require("locutus/php/array/array_merge");
-var array_unshift = require("locutus/php/array/array_unshift");
-
 module.exports = function (app, pg, conString) {
 
 
@@ -117,9 +113,6 @@ module.exports = function (app, pg, conString) {
 
     function continue_program() {
 
-      function onlyUnique(value, index, self) {
-        return self.indexOf(value) === index;
-      }
 
       // we have fields: either hand entered or derived from tables
 
@@ -138,12 +131,14 @@ module.exports = function (app, pg, conString) {
         });
 
 
-        ttlfields = array_merge(ttlfields, moefields);
+        // add in MOE fields
+        ttlfields = ttlfields.concat(moefields);
 
         ttlfields = ttlfields.filter(onlyUnique);
 
         //send moe modified field list back to main field list
-        field = implode(',', ttlfields);
+        field = ttlfields.join(',');
+
       }
 
 
@@ -225,7 +220,6 @@ module.exports = function (app, pg, conString) {
 
         joinlist = sqlListGeoID(geoid, "geonum");
 
-        console.log(joinlist);
 
         //END CASE 2  
       }
@@ -311,7 +305,6 @@ module.exports = function (app, pg, conString) {
       // execute query
       var sql = "SELECT geoname, state, county, place, tract, bg, geonum, " + field + " from search." + schema + jointablelist + " where" + joinlist + " limit " + limit + ";";
 
-      //console.log(sql);
 
       sendtodatabase(sql); //ASYNC
 
@@ -321,7 +314,6 @@ module.exports = function (app, pg, conString) {
 
       function check2() {
         if (lastbranchdone === 0) {
-          //console.log('waiting tablemeta...');
           setTimeout(check2, 50);
         }
         else {
@@ -360,27 +352,13 @@ module.exports = function (app, pg, conString) {
           }
 
           //add geonum to front of fields row array
-          array_unshift(ttlfields, "geonum");
-          array_unshift(ttlfields, "bg");
-          array_unshift(ttlfields, "tract");
-          array_unshift(ttlfields, "place");
-          array_unshift(ttlfields, "county");
-          array_unshift(ttlfields, "state");
-          array_unshift(ttlfields, "geoname");
+          ttlfields.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
 
           //add geonum description to front of metadata row array
-          array_unshift(metacsv, "Unique ID");
-          array_unshift(metacsv, "BG FIPS");
-          array_unshift(metacsv, "Tract FIPS");
-          array_unshift(metacsv, "Place FIPS");
-          array_unshift(metacsv, "County FIPS");
-          array_unshift(metacsv, "State FIPS");
-          array_unshift(metacsv, "Geographic Area Name");
+          metacsv.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
 
-          array_unshift(notobject, metacsv);
-          array_unshift(notobject, ttlfields);
+          notobject.unshift(metacsv, ttlfields);
 
-          //console.log(notobject);
           res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
           res.csv(notobject);
 
@@ -410,18 +388,19 @@ module.exports = function (app, pg, conString) {
 
       console.log(sqlstring);
       var client = new pg.Client(conString + db);
-      console.log("a:", conString + db);
 
       client.connect(function (err) {
 
         if (err) {
-          return console.error('could not connect to postgres', err);
+          // err
+          return;
         }
 
         client.query(sqlstring, function (err, result) {
 
           if (err) {
-            return console.error('error running query', err);
+            // err
+            return;
           }
 
           var resultdata = result.rows;
@@ -432,7 +411,6 @@ module.exports = function (app, pg, conString) {
           var tempobject = {};
 
           for (var t = 0; t < resultdata.length; t++) {
-            //console.log(resultdata[t]);
 
             tempobject = {};
 
@@ -463,18 +441,19 @@ module.exports = function (app, pg, conString) {
 
       console.log(sqlstring);
       var client = new pg.Client(conString + db);
-      console.log("b:", conString + db);
 
       client.connect(function (err) {
 
         if (err) {
-          return console.error('could not connect to postgres', err);
+          // err
+          return;
         }
 
         client.query(sqlstring, function (err, result) {
 
           if (err) {
-            return console.error('error running query', err);
+            //err
+            return;
           }
 
           client.end();
@@ -489,7 +468,7 @@ module.exports = function (app, pg, conString) {
               }
             }
 
-            field = implode(',', tcolumns); //$field becomes fields queried from info schema based upon table
+            field = tcolumns.join(','); //$field becomes fields queried from info schema based upon table
 
             return field;
           } //end branch 1
@@ -687,4 +666,10 @@ function getMOE(db, moe) {
     }
   }
   return false;
+}
+
+
+// how does this work??
+function onlyUnique(value, index, self) {
+  return self.indexOf(value) === index;
 }
