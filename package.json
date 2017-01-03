@@ -4,7 +4,8 @@
   "description": "microservices to query nationwide census data from the colorado state demography office online database",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon ./index.js"
   },
   "repository": {
     "type": "git",
@@ -25,8 +26,10 @@
   "dependencies": {
     "express": "^4.13.4",
     "express-csv": "^0.6.0",
-    "locutus": "^2.0.6",
     "pg": "^4.5.1",
     "winston": "^2.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.11.0"
   }
 }

@@ -10,6 +10,7 @@
 
 var csv = require("express-csv");
 var winston = require('winston');
+var pg = require('pg');
 
 
 module.exports = function (app, pg, conString) {
@@ -61,7 +62,7 @@ module.exports = function (app, pg, conString) {
     var jointablelist = ""; //working string of tables to be inserted into sql query
 
     var moefields = []; //moe field array
-    var tcolumns = []; //columns gathered from table(s?)
+
 
     var metacsv = []; //array for csv field descriptions only
     var ttlfields = [];
@@ -84,31 +85,17 @@ module.exports = function (app, pg, conString) {
     }
 
 
-    //if no fields are selected (then a table must be).  Create fields list based on the given table.
-    if (!field) {
+    var wait_for_fields = getFields(field, table, schema);
 
-      var table_list = sqlList(table, 'table_name');
-
-      //Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
-      var tablesql = "SELECT column_name from information_schema.columns where (" + table_list + ") and table_schema='" + schema + "';";
-
-      field = sendinternal(tablesql, 1); //ASYNC
-
-    }
+    wait_for_fields.then(function (success) {
+      field = success;
+      continue_program();
+      main_logic();
+    }, function (failure) {
+      console.log(failure);
+    });
 
 
-
-    function check() {
-      if (!field) {
-        setTimeout(check, 50);
-      }
-      else {
-        continue_program();
-        main_logic();
-      }
-    }
-
-    check();
 
 
     function continue_program() {
@@ -169,9 +156,54 @@ module.exports = function (app, pg, conString) {
       //Query metadata
       var metasql = "SELECT column_id, column_verbose from " + schema + ".census_column_metadata where " + metafieldlist + ";";
 
-      sendinternal(metasql, 2); //ASYNC
+      var second_request = sendToDatabase(metasql); //ASYNC
+
+      second_request.then(function (success) {
+        var metaarr = {};
+
+        for (var k = 0; k < success.length; k++) {
+
+          metaarr = {};
+          metaarr.column_id = success[k].column_id;
+          metaarr.column_title = success[k].column_verbose;
+
+          metaarrfull.push(metaarr);
 
 
+        } //end k
+
+        //metacsv
+        for (var m = 0; m < ttlfields.length; m++) {
+          for (var n = 0; n < metaarrfull.length; n++) {
+            if (ttlfields[m] === metaarrfull[n].column_id) {
+              metacsv.push(metaarrfull[n].column_title);
+            }
+          }
+        }
+
+
+        //this is where table metadata is gathered
+        var tblstr = sqlList(tablelist, 'table_id');
+
+        //Query metadata
+        var tblsql = "SELECT table_id, table_title, universe from " + schema + ".census_table_metadata where" + tblstr + ";";
+
+        var third_request = sendToDatabase(tblsql); //ASYNC
+
+        third_request.then(function (tableresult) {
+          var tblarr = {};
+          for (var q = 0; q < tableresult.length; q++) {
+            tblarr = {};
+            tblarr.table_id = tableresult[q].table_id;
+            tblarr.table_title = tableresult[q].table_title;
+            tblarr.universe = tableresult[q].universe;
+            tblarrfull.push(tblarr);
+          }
+
+
+        });
+
+      });
 
     }
 
@@ -181,41 +213,21 @@ module.exports = function (app, pg, conString) {
       var joinlist = ""; //working string of 'where' condition to be inserted into sql query
 
 
-      //CASE 1:  you have a geonum
-      //essentially you don't care about anything else.  just get the data for that/those geonum(s)
+      //CASE 1:  you have a geonum.  essentially you don't care about anything else.  just get the data for that/those geonum(s)
       if (geonum) {
 
-        //as far as errors go, tell people they are wasting their time specifying sumlev, state, county, place and geoid if they specified geonum.
-        if (state) {
-          errorarray.push('You specified STATE.  This parameter is ignored when you also specify GEONUM');
-        }
-        if (county) {
-          errorarray.push('You specified COUNTY.  This parameter is ignored when you also specify GEONUM');
-        }
-        if (sumlev) {
-          errorarray.push('You specified SUMLEV.  This parameter is ignored when you also specify GEONUM');
-        }
-        if (geoid) {
-          errorarray.push('You specified GEOID.  This parameter is ignored when you also specify GEONUM');
-        }
+        ignoreGeonum(errorarray, state, county, sumlev, geoid);
 
         joinlist = sqlList(geonum, 'geonum');
 
         //END CASE 1
       }
       else if (geoid) {
-        //CASE 2:  you have a geoid
+        //CASE 2:  you have a geoid. just get the data for that/those geoid(s)
 
-        //as far as errors go, tell people they are wasting their time specifying sumlev, state, county, place and geoid if they specified geonum.
-        if (state) {
-          errorarray.push('You specified STATE.  This parameter is ignored when you also specify GEOID');
-        }
-        if (county) {
-          errorarray.push('You specified COUNTY.  This parameter is ignored when you also specify GEOID');
-        }
-        if (sumlev) {
-          errorarray.push('You specified SUMLEV.  This parameter is ignored when you also specify GEOID');
-        }
+        ignoreGeoid(errorarray, state, county, sumlev);
+
+
 
 
         joinlist = sqlListGeoID(geoid, "geonum");
@@ -226,28 +238,7 @@ module.exports = function (app, pg, conString) {
       else if (sumlev || county || state) {
         //CASE 3 - query
 
-        var condition = ""; //condition is going to be a 3 character string which identifies sumlev, county, state (yes/no) (1,0)
-
-        if (sumlev) {
-          condition = "1";
-        }
-        else {
-          condition = "0";
-        }
-
-        if (county) {
-          condition = condition + "1";
-        }
-        else {
-          condition = condition + "0";
-        }
-
-        if (state) {
-          condition = condition + "1";
-        }
-        else {
-          condition = condition + "0";
-        }
+        var condition = getConditionString(sumlev, county, state);
 
 
         if (county) {
@@ -296,7 +287,7 @@ module.exports = function (app, pg, conString) {
       else {
         // CASE 4: No Geo
         errorarray.push('No geography specified.');
-        return 'error'; //goto a;
+        return 'error';
         //END CASE 4
       }
 
@@ -306,228 +297,166 @@ module.exports = function (app, pg, conString) {
       var sql = "SELECT geoname, state, county, place, tract, bg, geonum, " + field + " from search." + schema + jointablelist + " where" + joinlist + " limit " + limit + ";";
 
 
-      sendtodatabase(sql); //ASYNC
+      var final_call = sendToDatabase(sql);
+
+      final_call.then(function (success) {
+        //add geoname as first element in every result record array
+        fullarray = [];
+        var tempobject = {};
+
+        for (var t = 0; t < success.length; t++) {
+
+          tempobject = {};
+
+          for (var key in success[t]) {
+            if (success[t].hasOwnProperty(key)) {
+              tempobject[key] = success[t][key];
+              if ((key === 'state' || key === 'place' || key === 'county') && (success[t][key])) {
+                tempobject[key] = (success[t][key]).toString(); //the three vars above need to be converted to strings to be consistant. (if not null)
+              }
+            }
+          }
+
+          fullarray.push(tempobject);
+
+        }
+
+        createlast();
+
+      }, function (failure) {
+        console.log(failure);
+      });
 
     }
 
-    function formatandsend() {
 
-      function check2() {
-        if (lastbranchdone === 0) {
-          setTimeout(check2, 50);
-        }
-        else {
-          createlast();
-        }
-      }
-
-      check2();
+    function createlast() {
+      //meta first record is combined with results from iteration over every query result row
+      var withmeta = {};
+      withmeta.source = db;
+      withmeta.schema = schema;
+      withmeta.tablemeta = tblarrfull;
+      withmeta.fieldmeta = metaarrfull;
+      withmeta.data = fullarray;
+      withmeta.error = errorarray;
 
 
-      function createlast() {
-        //meta first record is combined with results from iteration over every query result row
-        var withmeta = {};
-        withmeta.source = db;
-        withmeta.schema = schema;
-        withmeta.tablemeta = tblarrfull;
-        withmeta.fieldmeta = metaarrfull;
-        withmeta.data = fullarray;
-        withmeta.error = errorarray;
+      if (type === 'csv') {
 
+        //fullarray to array, not object
+        var notobject = [];
+        var interarr = [];
 
-        if (type === 'csv') {
-
-          //fullarray to array, not object
-          var notobject = [];
-          var interarr = [];
-
-          for (var q = 0; q < fullarray.length; q++) {
-            interarr = [];
-            for (var key in fullarray[q]) {
-              if (fullarray[q].hasOwnProperty(key)) {
-                interarr.push(fullarray[q][key]);
-              }
+        for (var q = 0; q < fullarray.length; q++) {
+          interarr = [];
+          for (var key in fullarray[q]) {
+            if (fullarray[q].hasOwnProperty(key)) {
+              interarr.push(fullarray[q][key]);
             }
-            notobject.push(interarr);
           }
-
-          //add geonum to front of fields row array
-          ttlfields.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
-
-          //add geonum description to front of metadata row array
-          metacsv.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
-
-          notobject.unshift(metacsv, ttlfields);
-
-          res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
-          res.csv(notobject);
-
-        }
-        else {
-
-          res.set({
-            "Content-Type": "application/json"
-          });
-          res.send(JSON.stringify(withmeta));
+          notobject.push(interarr);
         }
 
+        //add geonum to front of fields row array
+        ttlfields.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
 
+        //add geonum description to front of metadata row array
+        metacsv.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
 
-        return;
+        notobject.unshift(metacsv, ttlfields);
+
+        res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
+        res.csv(notobject);
+
       }
+      else {
+
+        res.set({
+          "Content-Type": "application/json"
+        });
+        res.send(JSON.stringify(withmeta));
+      }
+
+
 
       return;
     }
 
-    return;
 
 
+    function getFields(field, table, schema) {
+      //if no fields are selected (then a table must be).  Create fields list based on the given table.
+      if (!field) {
+        return new Promise(function (resolve, reject) {
+          var table_list = sqlList(table, 'table_name');
 
+          //Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
+          var tablesql = "SELECT column_name from information_schema.columns where (" + table_list + ") and table_schema='" + schema + "';";
 
-    function sendtodatabase(sqlstring) {
+          var make_call_for_fields = sendToDatabase(tablesql);
 
-      console.log(sqlstring);
-      var client = new pg.Client(conString + db);
+          make_call_for_fields.then(function (success) {
 
-      client.connect(function (err) {
+            var tcolumns = []; //columns gathered from table(s?)
 
-        if (err) {
-          // err
-          return;
-        }
-
-        client.query(sqlstring, function (err, result) {
-
-          if (err) {
-            // err
-            return;
-          }
-
-          var resultdata = result.rows;
-
-
-          //add geoname as first element in every result record array
-          fullarray = [];
-          var tempobject = {};
-
-          for (var t = 0; t < resultdata.length; t++) {
-
-            tempobject = {};
-
-            for (var key in resultdata[t]) {
-              if (resultdata[t].hasOwnProperty(key)) {
-                tempobject[key] = resultdata[t][key];
-                if ((key === 'state' || key === 'place' || key === 'county') && (resultdata[t][key])) {
-                  tempobject[key] = (resultdata[t][key]).toString(); //the three vars above need to be converted to strings to be consistant. (if not null)
-                }
-              }
-            }
-
-            fullarray.push(tempobject);
-
-          }
-
-
-          formatandsend();
-
-
-          client.end();
-
-        });
-      });
-    }
-
-    function sendinternal(sqlstring, branch) {
-
-      console.log(sqlstring);
-      var client = new pg.Client(conString + db);
-
-      client.connect(function (err) {
-
-        if (err) {
-          // err
-          return;
-        }
-
-        client.query(sqlstring, function (err, result) {
-
-          if (err) {
-            //err
-            return;
-          }
-
-          client.end();
-
-          var tableresult = (result.rows);
-
-
-          if (branch === 1) {
-            for (var i = 0; i < tableresult.length; i++) {
-              if (tableresult[i].column_name !== 'geonum') {
-                tcolumns.push(tableresult[i].column_name);
+            for (var i = 0; i < success.length; i++) {
+              if (success[i].column_name !== 'geonum') {
+                tcolumns.push(success[i].column_name);
               }
             }
 
             field = tcolumns.join(','); //$field becomes fields queried from info schema based upon table
-
-            return field;
-          } //end branch 1
-
-          if (branch === 2) {
-
-            var metaarr = {};
-
-            for (var k = 0; k < tableresult.length; k++) {
-
-              metaarr = {};
-              metaarr.column_id = tableresult[k].column_id;
-              metaarr.column_title = tableresult[k].column_verbose;
-
-              metaarrfull.push(metaarr);
-
-
-            } //end k
-
-            //metacsv
-            for (var m = 0; m < ttlfields.length; m++) {
-              for (var n = 0; n < metaarrfull.length; n++) {
-                if (ttlfields[m] === metaarrfull[n].column_id) {
-                  metacsv.push(metaarrfull[n].column_title);
-                }
-              }
-            }
-
-
-            //this is where table metadata is gathered
-            var tblstr = sqlList(tablelist, 'table_id');
-
-            //Query metadata
-            var tblsql = "SELECT table_id, table_title, universe from " + schema + ".census_table_metadata where" + tblstr + ";";
-
-            sendinternal(tblsql, 3); //ASYNC
-
-          } //end branch2
-
-          if (branch === 3) {
-            var tblarr = {};
-            for (var q = 0; q < tableresult.length; q++) {
-              tblarr = {};
-              tblarr.table_id = tableresult[q].table_id;
-              tblarr.table_title = tableresult[q].table_title;
-              tblarr.universe = tableresult[q].universe;
-              tblarrfull.push(tblarr);
-            }
-            lastbranchdone = 1;
-            branch = 0; //just in case
-            return;
-
-          } //end branch 3
-
-          return;
+            resolve(field);
+          }, function (failure) {
+            console.log('this is bad');
+            reject(failure);
+          });
 
         });
+      }
+      else {
+        return new Promise(function (resolve, reject) {
+          resolve(field);
+        });
+      }
+    }
+
+
+
+    function sendToDatabase(sqlstring) {
+
+      console.log(sqlstring);
+
+      return new Promise(function (resolve, reject) {
+
+
+        var client = new pg.Client(conString + db);
+
+        client.connect(function (err) {
+
+          if (err) {
+            reject('could not connect');
+          }
+
+          client.query(sqlstring, function (err, result) {
+
+            if (err) {
+              reject('bad query');
+            }
+
+            client.end();
+
+            var tableresult = (result.rows);
+            console.log(tableresult);
+            resolve(tableresult);
+
+          });
+        });
+
       });
     }
+
+
 
   });
 
@@ -672,4 +601,65 @@ function getMOE(db, moe) {
 // how does this work??
 function onlyUnique(value, index, self) {
   return self.indexOf(value) === index;
+}
+
+
+function getConditionString(sumlev, county, state) {
+  var condition = ""; //condition is going to be a 3 character string which identifies sumlev, county, state (yes/no) (1,0)
+
+  if (sumlev) {
+    condition = "1";
+  }
+  else {
+    condition = "0";
+  }
+
+  if (county) {
+    condition = condition + "1";
+  }
+  else {
+    condition = condition + "0";
+  }
+
+  if (state) {
+    condition = condition + "1";
+  }
+  else {
+    condition = condition + "0";
+  }
+
+  return condition;
+}
+
+
+
+function ignoreGeonum(error, state, county, sumlev, geoid) {
+  //as far as errors go, tell people they are wasting their time specifying sumlev, state, county and geoid if they specified geonum.
+  if (state) {
+    error.push('You specified STATE.  This parameter is ignored when you also specify GEONUM');
+  }
+  if (county) {
+    error.push('You specified COUNTY.  This parameter is ignored when you also specify GEONUM');
+  }
+  if (sumlev) {
+    error.push('You specified SUMLEV.  This parameter is ignored when you also specify GEONUM');
+  }
+  if (geoid) {
+    error.push('You specified GEOID.  This parameter is ignored when you also specify GEONUM');
+  }
+}
+
+
+function ignoreGeoid(error, state, county, sumlev) {
+  //as far as errors go, tell people they are wasting their time specifying sumlev, state, and county if they specified geoid.
+  if (state) {
+    error.push('You specified STATE.  This parameter is ignored when you also specify GEOID');
+  }
+  if (county) {
+    error.push('You specified COUNTY.  This parameter is ignored when you also specify GEOID');
+  }
+  if (sumlev) {
+    error.push('You specified SUMLEV.  This parameter is ignored when you also specify GEOID');
+  }
+
 }
