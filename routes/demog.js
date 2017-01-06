@@ -23,26 +23,62 @@ module.exports = function (app, pg, conString) {
     var qparam = getParams(req, res);
 
 
-    // get Fields
 
-    // get Field Meta
+    getFields(qparam).then(function (field_list) {
 
-    // get Table Meta
+      qparam.field = addMarginOfErrorFields(qparam, field_list);
+      console.dir(qparam.field);
 
-    // main Query
+      var part1 = getFieldMeta(qparam);
+      var part2 = getTableMeta(qparam);
+      var part3 = mainQuery(qparam);
+
+      Promise.all([part1, part2, part3]).then(function (success) {
+        console.log('promise all: ' + success);
+        res.status(200).send('yes')
+      });
+
+    });
+
+    function getFieldMeta() {
+      return new Promise(function (resolve, reject) {
+
+
+
+
+
+
+        resolve('2');
+
+
+
+      });
+    }
+
+    function getTableMeta() {
+      return new Promise(function (resolve, reject) {
+        resolve('3');
+      });
+    }
+
+    function mainQuery() {
+      return new Promise(function (resolve, reject) {
+        resolve('4');
+      });
+    }
 
 
 
     // populate fields if only table was given
-    var wait_for_fields = getFields(qparam.field, qparam.table, qparam.schema);
+    // var wait_for_fields = getFields(qparam.field, qparam.table, qparam.schema);
 
-    wait_for_fields.then(function (success) {
-      qparam.field = success;
-      continue_program();
-      main_logic();
-    }, function (failure) {
-      console.log(failure);
-    });
+    // wait_for_fields.then(function (success) {
+    //   qparam.field = success;
+    //   continue_program();
+    //   main_logic();
+    // }, function (failure) {
+    //   console.log(failure);
+    // });
 
 
     //declare useful vars
@@ -65,30 +101,7 @@ module.exports = function (app, pg, conString) {
 
       // we have fields: either hand entered or derived from tables
 
-      //break the comma delimited records from field into an array  
-      ttlfields = qparam.field.split(",");
 
-
-      //if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
-      if (qparam.moe) {
-
-        //if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
-        ttlfields.forEach(function (d) {
-          if (d.indexOf('_moe') === -1) {
-            moefields.push(d.slice(0, -3) + '_moe' + d.slice(-3));
-          }
-        });
-
-
-        // add in MOE fields
-        ttlfields = ttlfields.concat(moefields);
-
-        ttlfields = ttlfields.filter(onlyUnique);
-
-        //send moe modified field list back to main field list
-        qparam.field = ttlfields.join(',');
-
-      }
 
 
 
@@ -344,7 +357,13 @@ module.exports = function (app, pg, conString) {
 
 
 
-    function getFields(field, table, schema) {
+    function getFields(qparam) {
+
+      var field = qparam.field;
+      var table = qparam.table;
+      var schema = qparam.schema;
+      var db = qparam.db;
+
       //if no fields are selected (then a table must be).  Create fields list based on the given table.
       if (!field) {
         return new Promise(function (resolve, reject) {
@@ -353,7 +372,7 @@ module.exports = function (app, pg, conString) {
           //Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
           var tablesql = "SELECT column_name from information_schema.columns where (" + table_list + ") and table_schema='" + schema + "';";
 
-          var make_call_for_fields = sendToDatabase(tablesql, conString, qparam.db);
+          var make_call_for_fields = sendToDatabase(tablesql, conString, db);
 
           make_call_for_fields.then(function (success) {
 
@@ -667,4 +686,35 @@ function sendToDatabase(sqlstring, conString, db) {
     });
 
   });
+}
+
+
+function addMarginOfErrorFields(qparam, field_list) {
+
+  //break the comma delimited records from field into an array  
+  var field_array = field_list.split(",");
+  var moefields = [];
+
+  //if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
+  if (qparam.moe) {
+
+    //if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
+    field_array.forEach(function (d) {
+      if (d.indexOf('_moe') === -1) {
+        moefields.push(d.slice(0, -3) + '_moe' + d.slice(-3));
+      }
+    });
+
+
+    // add in MOE fields
+    field_array = field_array.concat(moefields);
+
+    field_array = field_array.filter(onlyUnique);
+
+  }
+
+  //send moe modified field list back to main field list
+  // if there were no modifications, it was returned back the same (split/join canceled each other out)
+  return field_array.join(',');
+
 }
