@@ -2,9 +2,8 @@
 
 var express = require("express");
 var app = express();
-var pg = require("pg");
 var fs = require("fs");
-
+var pg = require('pg');
 
 var obj = JSON.parse(fs.readFileSync("./connection.json", "utf8"));
 var conString = "postgres://" + obj.name + ":" + obj.password + "@" + obj.host + ":" + obj.port + "/";
@@ -18,7 +17,7 @@ var allowCrossDomain = function (req, res, next) {
 app.use(allowCrossDomain);
 
 require("./routes/meta.js")(app, pg, conString);
-require("./routes/demog.js")(app, pg, conString);
+require("./routes/demog.js")(app, conString);
 require("./routes/geojson.js")(app, pg, conString);
 
 
