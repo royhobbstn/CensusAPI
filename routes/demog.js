@@ -5,14 +5,29 @@
 
 'use strict';
 
-// TODO super logging: logging module
+// TODO super logging
+// TODO different logging levels?
+// TODO should not even make metadata calls if not wanted
 
+// TODO what happens if i just THROW an error somewhere?
+// TODO better variable names
 // TODO error handling everywhere
+// TODO time request
+
+// TODO option disable metadata
+// TODO extended geography
+
+// TODO geonum is a num
+// TODO add geoid
+
+// TODO lebab
+
 // TODO test coverage (think of everywhere where you could cause a problem with the params)
 // TODO yank the database and see what happens
 
+
 var csv = require("express-csv");
-var winston = require('winston');
+var logger = require('../helpers/logger');
 
 
 var sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
@@ -23,45 +38,42 @@ module.exports = function (app, conString) {
 
   app.get('/demog', function (req, res) {
 
+    logger.info('**START**');
+
     // if the query is bad, make a quick exit
     immediateErrors(req, res);
+    logger.info('Passed initial tests.');
 
     // set defaults on parameters and assign them to an object called qparam
     var qparam = getParams(req, res);
+    logger.info('Parameters aquired.');
 
     getFields() // get a full list of fields requested
       .then(function (field_list) {
 
         qparam.field = addMarginOfErrorFields(field_list);
-        winston.info('Field Parameter Set');
+        logger.info('Field Parameter Set');
 
-        var part1 = getFieldMeta(); // result is field metadata info
-        var part2 = getTableMeta(); // result is table metadata info
-        var part3 = mainQuery(); // result is main query info
+        var part1 = getFieldMeta(); // resolves to metadata info
+        var part2 = getTableMeta(); // resolves to table metadata info
+        var part3 = mainQuery(); // resolves to main query info
 
         Promise.all([part1, part2, part3])
           .then(function (success) {
-            winston.info('Ready to assemble output.');
+            logger.info('Ready to assemble output.');
             // this is where you combine all the info together (meta from fields 
             // and tables, plus main query) into a final JS object to be returned
             var response = assembleOutput(success);
+            logger.info('Assembled output. Returning');
             res.status(200).send(response);
           }).catch(catchError);
 
       }).catch(catchError);
 
     function catchError(reason) {
-      winston.info('promise failed: ' + reason);
+      logger.info('There has been an error: ' + reason);
       res.status(500).send(reason);
     }
-
-
-
-
-
-
-
-
 
 
 
@@ -69,24 +81,27 @@ module.exports = function (app, conString) {
 
       //break the comma delimited records from field into an array  
       var field_array = field_list.split(",");
-      var moefields = [];
+
+      var moe_fields = [];
 
       //if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
       if (qparam.moe) {
+        logger.info('Adding margin of error fields.');
 
         //if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
         field_array.forEach(function (d) {
           if (d.indexOf('_moe') === -1) {
-            moefields.push(d.slice(0, -3) + '_moe' + d.slice(-3));
+            moe_fields.push(d.slice(0, -3) + '_moe' + d.slice(-3));
           }
         });
 
-
         // add in MOE fields
-        field_array = field_array.concat(moefields);
-        field_array = field_array.filter(onlyUnique);
+        field_array = field_array.concat(moe_fields);
 
       }
+
+      //
+      field_array = field_array.filter(onlyUnique);
 
       //send moe modified field list back to main field list
       // if there were no modifications, it was returned back the same (split/join canceled each other out)
@@ -97,86 +112,85 @@ module.exports = function (app, conString) {
 
     function assembleOutput(promise_output) {
 
-      console.dir(promise_output[0]);
-      console.dir(promise_output[1]);
-      console.dir(promise_output[2]);
+      var column_metadata = promise_output[0];
+      var table_metadata = promise_output[1];
+      var query_data = promise_output[2];
 
-      var tblarrfull = promise_output[0];
-      var metaarrfull = promise_output[1];
-      var success = promise_output[2];
+      var data_array = query_data.map(function (d) {
+        d.state = (d.state !== null) ? (d.state).toString() : null;
+        d.place = (d.place !== null) ? (d.place).toString() : null;
+        d.county = (d.county !== null) ? (d.county).toString() : null;
+        return d;
+      });
 
-      var fullarray = []; //final data array
-
-      //add geoname as first element in every result record array
-      fullarray = [];
-      var tempobject = {};
-
-      for (var t = 0; t < success.length; t++) {
-
-        tempobject = {};
-
-        for (var key in success[t]) {
-          if (success[t].hasOwnProperty(key)) {
-            tempobject[key] = success[t][key];
-            if ((key === 'state' || key === 'place' || key === 'county') && (success[t][key])) {
-              tempobject[key] = (success[t][key]).toString(); //the three vars above need to be converted to strings to be consistant. (if not null)
-            }
-          }
-        }
-
-        fullarray.push(tempobject);
-
-      }
-
-      //meta first record is combined with results from iteration over every query result row
-      var withmeta = {};
-      withmeta.source = qparam.db;
-      withmeta.schema = qparam.schema;
-      withmeta.tablemeta = tblarrfull;
-      withmeta.fieldmeta = metaarrfull;
-      withmeta.data = fullarray;
 
       if (qparam.type === 'csv') {
+        logger.info('Customizing for type CSV.');
 
-        //fullarray to array, not object
+        //data_array to array, not object
         var notobject = [];
         var interarr = [];
 
-        for (var q = 0; q < fullarray.length; q++) {
+        for (var q = 0; q < data_array.length; q++) {
           interarr = [];
-          for (var key in fullarray[q]) {
-            if (fullarray[q].hasOwnProperty(key)) {
-              interarr.push(fullarray[q][key]);
+          for (var key in data_array[q]) {
+            if (data_array[q].hasOwnProperty(key)) {
+              interarr.push(data_array[q][key]);
             }
           }
           notobject.push(interarr);
         }
 
-        //add geonum to front of fields row array
+        if (qparam.meta) {
+          logger.info('Writing CSV metadata.');
+          var metacsv = []; //array for csv field descriptions only
+
+          //metacsv
+          for (var n = 0; n < column_metadata.length; n++) {
+            metacsv.push(column_metadata[n].column_title);
+          }
+
+          //add metadata to front (on second row)
+          metacsv.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
+
+          notobject.unshift(metacsv);
+        }
+
+
+        var ttlfields = qparam.field.split(",");
+
+        //add column names to front
         ttlfields.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
-
-        //add geonum description to front of metadata row array
-        metacsv.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
-
-        notobject.unshift(metacsv, ttlfields);
+        notobject.unshift(ttlfields);
 
         res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
         res.csv(notobject);
 
       }
       else {
+        logger.info('Customizing for type JSON');
 
-        var pretty_print_json = '';
+        // JSON Output
 
-        if (qparam.pretty) {
-          pretty_print_json = '  ';
+        var result = {};
+        result.source = qparam.db;
+        result.schema = qparam.schema;
+
+        if (qparam.meta) {
+          logger.info('Writing JSON metadata.');
+          result.tablemeta = table_metadata;
+          result.fieldmeta = column_metadata;
         }
+
+        result.data = data_array;
+
+        var pretty_print_json = qparam.pretty ? '  ' : '';
 
         res.set({
           "Content-Type": "application/json"
         });
 
-        return (JSON.stringify(withmeta, null, pretty_print_json));
+        return (JSON.stringify(result, null, pretty_print_json));
       }
 
 
@@ -186,116 +200,67 @@ module.exports = function (app, conString) {
     function mainQuery() {
 
       return new Promise(function (resolve, reject) {
-        //
 
         var joinlist = ""; //working string of 'where' condition to be inserted into sql query
 
-
-        //CASE 1:  you have a geonum.  essentially you don't care about anything else.  just get the data for that/those geonum(s)
         if (qparam.geonum) {
+          //CASE 1:  you have a geonum.  essentially you don't care about anything else.  just get the data for that/those geonum(s)
+          logger.info('CASE 1:  You have a geonum.  Just get the data for that/those geonum(s)');
 
-          ignoreGeonum(qparam.state, qparam.county, qparam.sumlev, qparam.geoid);
+          if (qparam.state || qparam.county || qparam.sumlev || qparam.geoid) {
+            logger.warn('You specified either STATE, COUNTY, SUMLEV or GEOID.  These parameters are ignored when you also specify GEONUM');
+          }
 
           joinlist = sqlList(qparam.geonum, 'geonum');
-
-          //END CASE 1
         }
         else if (qparam.geoid) {
           //CASE 2:  you have a geoid. just get the data for that/those geoid(s)
+          logger.info('CASE 2: You have a geoid. just get the data for that/those geoid(s)');
 
-          ignoreGeoid(qparam.state, qparam.county, qparam.sumlev);
+          if (qparam.state || qparam.county || qparam.sumlev) {
+            logger.warn('You specified either STATE, COUNTY or SUMLEV.  These parameters are ignored when you also specify GEOID');
+          }
 
-
-
-
-          joinlist = sqlListGeoID(qparam.geoid, "geonum");
-
-
-          //END CASE 2  
+          var geonum_list = '1' + qparam.geoid.replace(/,/g, ',1'); // convert geoids to geonums
+          joinlist = sqlList(geonum_list, "geonum");
         }
         else if (qparam.sumlev || qparam.county || qparam.state) {
           //CASE 3 - query
-
+          logger.info('CASE 3: Query using one or all of: sumlev, county, or state.');
           var condition = getConditionString(qparam.sumlev, qparam.county, qparam.state);
 
+          var countylist = qparam.county ? sqlList(qparam.county, 'county') : '';
+          var statelist = qparam.state ? sqlList(qparam.state, 'state') : '';
+          var sumlevlist = qparam.sumlev ? sqlList(qparam.sumlev, 'sumlev') : '';
 
-          if (qparam.county) {
-            //create county array out of delimited list
-            var countylist = sqlList(qparam.county, 'county');
-          }
+          joinlist = constructWhereClause(condition, statelist, countylist, sumlevlist);
 
-
-          if (qparam.state) {
-            //create state array out of delimited list
-            var statelist = sqlList(qparam.state, 'state');
-          }
-
-          // TODO warning sumlev is STATE 40 but county is given
-
-          if (qparam.sumlev) {
-            //create sumlev array out of delimited list
-            var sumlevlist = sqlList(qparam.sumlev, 'sumlev');
-          }
-
-          //every possible combination of sumlev, county, state
-          if (condition === '001') {
-            joinlist = " (" + statelist + ") ";
-          }
-          if (condition === '011') {
-            joinlist = " (" + countylist + ") and (" + statelist + ") ";
-          }
-          if (condition === '111') {
-            joinlist = " (" + sumlevlist + ") and (" + countylist + ") and (" + statelist + ") ";
-          }
-          if (condition === '010') {
-            joinlist = " (" + countylist + ") ";
-          }
-          if (condition === '110') {
-            joinlist = " (" + sumlevlist + ") and (" + countylist + ")";
-          }
-          if (condition === '100') {
-            joinlist = " (" + sumlevlist + ") ";
-          }
-          if (condition === '101') {
-            joinlist = " (" + sumlevlist + ") and (" + statelist + ") ";
-          }
-
-          //END CASE 3
         }
         else {
           // CASE 4: No Geo
-          winston.warn('No geography specified.');
-          return 'error';
-          //END CASE 4
+          logger.warn('No Geography in query.  Please specify either a geoname, geonum, sumlev, county, or state.');
+          reject('No Geography in query.  Please specify either a geoname, geonum, sumlev, county, or state.');
         }
-
-        var tablelist = []; //array of all tables used in query    
-
-        var ttlfields = qparam.field.split(",");
-
-        //get a list of tables based upon characters in each field name  (convention: last 3 characters identify field number, previous characters are table name) 
-        ttlfields.forEach(function (d) {
-          tablelist.push(d.slice(0, -3));
-        });
-
-        //remove duplicate tables in array
-        tablelist = tablelist.filter(onlyUnique);
-
 
         var jointablelist = ""; //working string of tables to be inserted into sql query
 
+        var table_array = getTableArray(qparam.field);
+
         //create a string to add to sql statement
-        for (var n = 0; n < tablelist.length; n++) {
-          jointablelist = jointablelist + " natural join " + qparam.schema + "." + tablelist[n];
+        for (var n = 0; n < table_array.length; n++) {
+          jointablelist = jointablelist + " natural join " + qparam.schema + "." + table_array[n];
         }
 
         //CONSTRUCT MAIN SQL STATEMENT
         // execute query
         var sql = "SELECT geoname, state, county, place, tract, bg, geonum, " + qparam.field + " from search." + qparam.schema + jointablelist + " where" + joinlist + " limit " + qparam.limit + ";";
-        winston.info('SQL: ' + sql);
+
+        logger.info('Sending Main Query to the Database.');
         sendToDatabase(sql, conString, qparam.db).then(function (success) {
+          logger.info('Main Query result successfully returned.');
           resolve(success);
         }, function (failure) {
+          logger.info('Main Query failed.');
           reject(failure);
         });
 
@@ -315,21 +280,24 @@ module.exports = function (app, conString) {
 
         //if no fields are selected (then a table must be).  Create fields list based on the given table.
         if (!field) {
+          logger.info('There are no fields in your query.  Retrieving a list of fields based upon your requested tables.');
 
           var table_list = sqlList(table, 'table_name');
 
           //Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
           var tablesql = "SELECT column_name from information_schema.columns where (" + table_list + ") and table_schema='" + schema + "';";
-          winston.info('SQL: ' + tablesql);
 
+          logger.info('Sending request for a list of fields to the database.');
           var make_call_for_fields = sendToDatabase(tablesql, conString, db);
 
           make_call_for_fields.then(function (success) {
 
             if (success.length === 0) {
-              reject('There are no valid table names in your list.')
+              logger.info('There are no valid field or table names in your request.');
+              reject('There are no valid field or table names in your request.');
             }
 
+            logger.info('Successfully returned a list of fields from the database.');
             var tcolumns = []; //columns gathered from table(s?)
 
             for (var i = 0; i < success.length; i++) {
@@ -339,21 +307,20 @@ module.exports = function (app, conString) {
             }
 
             field = tcolumns.join(','); //$field becomes fields queried from info schema based upon table
-            winston.info('1a');
-            winston.info(field);
             resolve(field);
           }, function (failure) {
+            logger.info('Your database request for a list of fields has failed.');
             reject(failure);
           });
 
 
         }
         else {
-          winston.info('1b');
+          logger.info('You have specified fields in your query.  Tables will be ignored.');
           resolve(field);
         }
 
-      });
+      }); // end new promise
 
     } // end get fields
 
@@ -362,43 +329,34 @@ module.exports = function (app, conString) {
     function getFieldMeta() {
 
       return new Promise(function (resolve, reject) {
-        // we have fields: either hand entered or derived from tables
-        var ttlfields = qparam.field.split(",");
-        var metaarrfull = []; //final field metadata array
 
-        var metacsv = []; //array for csv field descriptions only
+        var field_array = qparam.field.split(",");
+        var field_clause = sqlList(field_array, 'column_id');
 
-        console.log(ttlfields);
+        var field_metadata_sql = "SELECT column_id, column_verbose from " + qparam.schema + ".census_column_metadata where " + field_clause + ";";
 
-        //this is where field metadata is gathered
-        var metafieldlist = sqlList(ttlfields, 'column_id');
+        logger.info('Sending request for field metadata to the database.');
 
-        //Query metadata
-        var metasql = "SELECT column_id, column_verbose from " + qparam.schema + ".census_column_metadata where " + metafieldlist + ";";
-        winston.info('SQL: ' + metasql);
+        sendToDatabase(field_metadata_sql, conString, qparam.db)
+          .then(function (result) {
 
-        sendToDatabase(metasql, conString, qparam.db).then(function (success) {
-          var metaarr = {};
+            var field_metadata_array = [];
 
-          for (var k = 0; k < success.length; k++) {
-            metaarr = {};
-            metaarr.column_id = success[k].column_id;
-            metaarr.column_title = success[k].column_verbose;
-            metaarrfull.push(metaarr);
-          } //end k
+            for (var k = 0; k < result.length; k++) {
+              var temp_obj = {};
+              temp_obj.column_id = result[k].column_id;
+              temp_obj.column_title = result[k].column_verbose;
+              field_metadata_array.push(temp_obj);
+            } //end k
 
-          //metacsv
-          for (var m = 0; m < ttlfields.length; m++) {
-            for (var n = 0; n < metaarrfull.length; n++) {
-              if (ttlfields[m] === metaarrfull[n].column_id) {
-                metacsv.push(metaarrfull[n].column_title);
-              }
-            }
-          }
-          winston.info('2');
-          resolve(metaarrfull);
+            logger.info('Your database request for field metadata has completed successfully.');
+            resolve(field_metadata_array);
 
-        }); // end send to database
+          }, function (failure) {
+            logger.info('Your database request for field metadata has failed.');
+            reject(failure);
+          });
+
       }); // end new promise
 
     } // end getFieldMeta
@@ -408,48 +366,38 @@ module.exports = function (app, conString) {
     function getTableMeta() {
 
       return new Promise(function (resolve, reject) {
-        // we have fields: either hand entered or derived from tables
-        var ttlfields = qparam.field.split(",");
 
-        var tblarrfull = []; //final table metadata array
+        var table_array = getTableArray(qparam.field);
+        var table_clause = sqlList(table_array, 'table_id');
 
-        var tablelist = []; //array of all tables used in query    
+        var table_metadata_sql = "SELECT table_id, table_title, universe from " + qparam.schema + ".census_table_metadata where" + table_clause + ";";
 
-        //get a list of tables based upon characters in each field name  (convention: last 3 characters identify field number, previous characters are table name) 
-        ttlfields.forEach(function (d) {
-          tablelist.push(d.slice(0, -3));
-        });
+        logger.info('Sending request for table metadata to the database.');
 
-        //remove duplicate tables in array
-        tablelist = tablelist.filter(onlyUnique);
+        sendToDatabase(table_metadata_sql, conString, qparam.db)
+          .then(function (result) {
 
+            var table_metadata_array = []; //final table metadata array
 
+            for (var q = 0; q < result.length; q++) {
+              var temp_obj = {};
+              temp_obj.table_id = result[q].table_id;
+              temp_obj.table_title = result[q].table_title;
+              temp_obj.universe = result[q].universe;
+              table_metadata_array.push(temp_obj);
+            }
 
-        //this is where table metadata is gathered
-        var tblstr = sqlList(tablelist, 'table_id');
+            logger.info('Your database request for table metadata has completed successfully.');
+            resolve(table_metadata_array);
 
-        //Query metadata
-        var tblsql = "SELECT table_id, table_title, universe from " + qparam.schema + ".census_table_metadata where" + tblstr + ";";
-        winston.info('SQL: ' + tblsql);
+          }, function (failure) {
+            logger.info('Your database request for table metadata has failed.');
+            reject(failure);
+          });
 
-        var third_request = sendToDatabase(tblsql, conString, qparam.db); //ASYNC
+      }); // end new promise
 
-        third_request.then(function (tableresult) {
-          var tblarr = {};
-          for (var q = 0; q < tableresult.length; q++) {
-            tblarr = {};
-            tblarr.table_id = tableresult[q].table_id;
-            tblarr.table_title = tableresult[q].table_title;
-            tblarr.universe = tableresult[q].universe;
-            tblarrfull.push(tblarr);
-          }
-          winston.info('3');
-          resolve(tblarrfull);
-        });
-      });
-
-    }
-
+    } // end getTableMeta
 
 
 
@@ -462,38 +410,19 @@ module.exports = function (app, conString) {
 
 
 
-function checkValidParams(query) {
-
-  //get list of all parameters - check all are valid
-  var getkey = [];
-
-  //push $_POST vars into simple array for each $key
-  for (var propName in query) {
-    if (query.hasOwnProperty(propName)) {
-      getkey.push(propName);
-    }
-  }
-
-  //loop through $keys, check against list of valid values
-  for (var i = 0; i < getkey.length; i++) {
-    if (getkey[i] !== 'field' && getkey[i] !== 'state' && getkey[i] !== 'county' && getkey[i] !== 'sumlev' && getkey[i] !== 'place' && getkey[i] !== 'geonum' && getkey[i] !== 'geoid' && getkey[i] !== 'db' && getkey[i] !== 'schema' && getkey[i] !== 'geo' && getkey[i] !== 'series' && getkey[i] !== 'type' && getkey[i] !== 'limit' && getkey[i] !== 'moe' && getkey[i] !== 'table') {
-      winston.warn('Your parameter -' + getkey[i] + '- is not valid.');
-    }
-  }
-
-}
 
 
-function sqlList(str_list, field_name) {
+function sqlList(string_list_or_array, field_name) {
+  // convert a string list or array into a WHERE clause (using OR)
 
   var list_array = [];
 
   // will work with arrays or comma delimited strings
-  if (!Array.isArray(str_list)) {
-    list_array = str_list.split(",");
+  if (!Array.isArray(string_list_or_array)) {
+    list_array = string_list_or_array.split(",");
   }
   else {
-    list_array = str_list;
+    list_array = string_list_or_array;
   }
 
   var str = "";
@@ -502,30 +431,7 @@ function sqlList(str_list, field_name) {
     str = str + " " + field_name + "='" + d + "' or";
   });
 
-  return str.slice(0, -2);
-
-}
-
-
-// hrm.  similar to above.  refactor possible without being too abstract?
-function sqlListGeoID(str_list, field_name) {
-
-  var list_array = [];
-
-  // will work with arrays or comma delimited strings
-  if (!Array.isArray(str_list)) {
-    list_array = str_list.split(",");
-  }
-  else {
-    list_array = str_list;
-  }
-
-  var str = "";
-
-  list_array.forEach(function (d) {
-    str = str + " " + field_name + "='1" + d + "' or";
-  });
-
+  // remove trailing 'or'
   return str.slice(0, -2);
 
 }
@@ -533,7 +439,11 @@ function sqlListGeoID(str_list, field_name) {
 
 function validateDB(db) {
   // validate database.  undefined is okay because it will be set to a default.
-  if (db !== undefined && db !== 'c1980' && db !== 'c1990' && db !== 'c2000' && db !== 'c2010' && db !== 'acs0812' && db !== 'acs0913' && db !== 'acs1014' && db !== 'acs1115') {
+
+  var valid_db = [undefined, 'c1980', 'c1990', 'c2000', 'c2010', 'acs0812', 'acs0913', 'acs1014', 'acs1115'];
+
+  if (valid_db.indexOf(db) !== -1) {
+    logger.error(db + ' is not a valid database.  Alter validateDB function if this is in error.');
     return false;
   }
   else {
@@ -544,6 +454,7 @@ function validateDB(db) {
 
 function setDefaultSchema(db) {
   // db already validated.  setting default to 'data' ensures easier compatibility with future ACS releases.
+
   if (db === 'c2000' || db === 'c1990' || db === 'c1980') {
     return 'sf1';
   }
@@ -554,7 +465,8 @@ function setDefaultSchema(db) {
 
 
 function getMOE(db, moe) {
-  //if database is acs, check to see if moe option is flagged
+  // if database is acs, check to see if moe option is flagged
+
   if (db.slice(0, 3) === 'acs') {
     if (moe === 'yes' || moe === 'y' || moe === 'true') {
       return true;
@@ -566,6 +478,7 @@ function getMOE(db, moe) {
 
 function getPretty(pretty) {
   // pretty-print JSON option
+
   if (pretty === 'yes' || pretty === 'y' || pretty === 'true') {
     return true;
   }
@@ -578,64 +491,25 @@ function onlyUnique(value, index, self) {
 }
 
 
+function getMeta(meta) {
+  // get true/false meta parameter
+
+  if (meta === 'no' || meta === 'n' || meta === 'false') {
+    return false;
+  }
+  return true;
+}
+
+
 function getConditionString(sumlev, county, state) {
-  var condition = ""; //condition is going to be a 3 character string which identifies sumlev, county, state (yes/no) (1,0)
+  // condition is going to be a 3 character string which identifies sumlev, county, state (yes/no) (1,0)
 
-  if (sumlev) {
-    condition = "1";
-  }
-  else {
-    condition = "0";
-  }
-
-  if (county) {
-    condition = condition + "1";
-  }
-  else {
-    condition = condition + "0";
-  }
-
-  if (state) {
-    condition = condition + "1";
-  }
-  else {
-    condition = condition + "0";
-  }
+  var condition = "";
+  sumlev ? condition = "1" : "0";
+  county ? condition += "1" : condition += "0";
+  state ? condition += "1" : condition += "0";
 
   return condition;
-}
-
-
-
-function ignoreGeonum(state, county, sumlev, geoid) {
-  //as far as errors go, tell people they are wasting their time specifying sumlev, state, county and geoid if they specified geonum.
-  if (state) {
-    winston.warn('You specified STATE.  This parameter is ignored when you also specify GEONUM');
-  }
-  if (county) {
-    winston.warn('You specified COUNTY.  This parameter is ignored when you also specify GEONUM');
-  }
-  if (sumlev) {
-    winston.warn('You specified SUMLEV.  This parameter is ignored when you also specify GEONUM');
-  }
-  if (geoid) {
-    winston.warn('You specified GEOID.  This parameter is ignored when you also specify GEONUM');
-  }
-}
-
-
-function ignoreGeoid(state, county, sumlev) {
-  //as far as errors go, tell people they are wasting their time specifying sumlev, state, and county if they specified geoid.
-  if (state) {
-    winston.warn('You specified STATE.  This parameter is ignored when you also specify GEOID');
-  }
-  if (county) {
-    winston.warn('You specified COUNTY.  This parameter is ignored when you also specify GEOID');
-  }
-  if (sumlev) {
-    winston.warn('You specified SUMLEV.  This parameter is ignored when you also specify GEOID');
-  }
-
 }
 
 
@@ -667,17 +541,84 @@ function getParams(req, res) {
 
   obj.moe = getMOE(obj.db, req.query.moe);
   obj.pretty = getPretty(req.query.pretty);
+  obj.meta = getMeta(req.query.meta);
 
   return obj;
 
 }
 
 
+function checkValidParams(query_params) {
+  //get list of parameters - check all are valid
+
+  var keys = Object.keys(query_params);
+
+  var valid_keys = ['pretty', 'field', 'state', 'county', 'sumlev', 'place', 'geonum', 'geoid', 'db', 'schema', 'geo', 'series', 'type', 'limit', 'moe', 'table', 'meta'];
+
+  keys.forEach(function (key) {
+    if (valid_keys.indexOf(key) === -1) {
+      logger.warn("Your parameter '" + key + "' is not valid.");
+    }
+  });
+
+}
+
+
+function constructWhereClause(condition, statelist, countylist, sumlevlist) {
+
+  var joinlist = "";
+  logger.info('Constructing WHERE clause using a combination of state, county and sumlev.');
+
+  if (condition === '001') {
+    joinlist = " (" + statelist + ") ";
+  }
+  if (condition === '011') {
+    joinlist = " (" + countylist + ") and (" + statelist + ") ";
+  }
+  if (condition === '111') {
+    joinlist = " (" + sumlevlist + ") and (" + countylist + ") and (" + statelist + ") ";
+  }
+  if (condition === '010') {
+    joinlist = " (" + countylist + ") ";
+  }
+  if (condition === '110') {
+    joinlist = " (" + sumlevlist + ") and (" + countylist + ")";
+  }
+  if (condition === '100') {
+    joinlist = " (" + sumlevlist + ") ";
+  }
+  if (condition === '101') {
+    joinlist = " (" + sumlevlist + ") and (" + statelist + ") ";
+  }
+
+  return joinlist;
+}
+
+
+function getTableArray(fields) {
+  //get a list of tables based upon characters in each field name  (convention: last 3 characters identify field number, previous characters are table name) 
+
+  var field_list = fields.split(",");
+
+  var table_list = [];
+
+  field_list.forEach(function (d) {
+    table_list.push(d.slice(0, -3));
+  });
+
+  //remove duplicate tables in array
+  table_list = table_list.filter(onlyUnique);
+
+  return table_list;
+}
+
+
+
 function immediateErrors(req, res) {
   // these warrant immediate warnings or early exits from the program
 
   if (req.query.field && req.query.table) {
-    winston.warn('You specified TABLE.  This parameter is ignored when you also specify FIELD');
+    logger.warn('You specified TABLE.  This parameter is ignored when you also specify FIELD');
   }
 
   if (!validateDB(req.query.db)) {

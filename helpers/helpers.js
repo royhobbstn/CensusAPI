@@ -1,15 +1,18 @@
-var pg = require('pg');
+'use strict';
 
-//var logger = require('logger');
+var pg = require('pg');
+var logger = require('./logger');
+
 
 exports.sendToDatabase = function (sqlstring, conString, db) {
 
-    // logger.info('SQL: ' + sqlstring);
+    logger.info('SQL: ' + sqlstring);
 
-    return new Promise(function (resolve, reject) {
-        var client = new pg.Client(conString + db);
+    return new Promise((resolve, reject) => {
 
-        client.connect(function (err) {
+        const client = new pg.Client(conString + db);
+
+        client.connect(err => {
 
             if (err) {
                 client.end();
@@ -17,7 +20,7 @@ exports.sendToDatabase = function (sqlstring, conString, db) {
             }
             else {
 
-                client.query(sqlstring, function (err, result) {
+                client.query(sqlstring, (err, result) => {
                     client.end();
                     err ? reject(err) : resolve(result.rows);
                 });
