@@ -16,13 +16,13 @@ exports.sendToDatabase = function (sqlstring, conString, db) {
 
             if (err) {
                 client.end();
-                reject('could not connect');
+                reject('Could not connect to the database.');
             }
             else {
 
                 client.query(sqlstring, (err, result) => {
                     client.end();
-                    err ? reject(err) : resolve(result.rows);
+                    err ? reject(`Error in databas query: ${err}`) : resolve(result.rows);
                 });
 
             } // end else (no error condition)
