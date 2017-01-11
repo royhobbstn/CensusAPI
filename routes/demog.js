@@ -13,8 +13,6 @@
 // TODO extended geography
 // TODO smart export filename CSV
 
-// TODO lebab
-
 
 // TODO error handling everywhere
 
@@ -34,26 +32,25 @@ var logger = require('../helpers/logger');
 var sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
 
 
-module.exports = function (app, conString) {
+module.exports = (app, conString) => {
 
+  app.get('/demog', (req, res) => {
 
-  app.get('/demog', function (req, res) {
-
-    var start = process.hrtime();
+    const start = process.hrtime();
 
     logger.info('**START**');
 
     // set defaults on parameters and assign them to an object called query_parameter
-    var query_parameter = getParams(req, res);
+    const query_parameter = getParams(req, res);
     logger.info('Parameters acquired.');
 
     getFields() // get a full list of fields requested
-      .then(function (field_list) {
+      .then(field_list => {
 
         query_parameter.field = addMarginOfErrorFields(field_list);
         logger.info('Field Parameter Set');
 
-        var promise_array = [];
+        const promise_array = [];
 
         promise_array[0] = mainQuery(); // resolves to main query info
 
@@ -67,12 +64,12 @@ module.exports = function (app, conString) {
         }
 
         Promise.all(promise_array)
-          .then(function (success) {
+          .then(success => {
             logger.info('Ready to assemble output.');
             // this is where you combine all the info together (meta from fields 
             // and tables, plus main query) into a final JS object to be returned
-            var response = assembleOutput(success);
-            logger.info('--Time Elapsed: ' + process.hrtime(start)[1] / 1000000 + 'ms');
+            let response = assembleOutput(success);
+            logger.info(`--Time Elapsed: ${process.hrtime(start)[1] / 1000000}ms`);
             logger.info('**COMPLETED**');
 
             if (query_parameter.type === 'csv') {
@@ -82,7 +79,7 @@ module.exports = function (app, conString) {
             }
             else {
               // send JSON
-              var pretty_print_json = query_parameter.pretty ? '  ' : '';
+              const pretty_print_json = query_parameter.pretty ? '  ' : '';
               response = (JSON.stringify(response, null, pretty_print_json));
               res.setHeader("Content-Type", "application/json");
               res.status(200).send(response);
@@ -91,7 +88,6 @@ module.exports = function (app, conString) {
           }).catch(catchError);
 
       }).catch(catchError);
-
 
     function catchError(reason) {
       logger.error('There has been an error: ' + reason);
@@ -129,17 +125,16 @@ module.exports = function (app, conString) {
 
     }
 
-
     function assembleOutput(promise_output) {
 
-      var query_data = promise_output[0]; // main data object
+      const query_data = promise_output[0]; // main data object
 
       if (query_parameter.meta) {
         var column_metadata = promise_output[1];
         var table_metadata = promise_output[2];
       }
 
-      var data_array = query_data.map(function (d) {
+      const data_array = query_data.map(d => {
         // convert non-null values of state, place, and county to their string equivalent
         d.state = (d.state !== null) ? (d.state).toString() : null;
         d.place = (d.place !== null) ? (d.place).toString() : null;
@@ -150,12 +145,12 @@ module.exports = function (app, conString) {
       if (query_parameter.type === 'csv') {
         logger.info('Customizing for type CSV.');
 
-        var data_array_as_csv_array = []; // data_array changes from array of objects to array of arrays
+        const data_array_as_csv_array = []; // data_array changes from array of objects to array of arrays
 
-        data_array.forEach(function (d) {
-          var keys = Object.keys(d);
-          var temp_array = [];
-          keys.forEach(function (e) {
+        data_array.forEach(d => {
+          const keys = Object.keys(d);
+          const temp_array = [];
+          keys.forEach(e => {
             temp_array.push(d[e]);
           });
           data_array_as_csv_array.push(temp_array);
@@ -163,11 +158,11 @@ module.exports = function (app, conString) {
 
         if (query_parameter.meta) {
           logger.info('Writing CSV metadata.');
-          var csv_metadata_row = []; // array for csv field descriptions only
+          const csv_metadata_row = []; // array for csv field descriptions only
 
-          for (var n = 0; n < column_metadata.length; n++) {
-            csv_metadata_row.push(column_metadata[n].column_title);
-          }
+          column_metadata.forEach(d => {
+            csv_metadata_row.push(d.column_title);
+          });
 
           // add metadata to front (on second row)
           csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
@@ -179,7 +174,7 @@ module.exports = function (app, conString) {
         }
 
 
-        var field_name_row = query_parameter.field.split(",");
+        const field_name_row = query_parameter.field.split(",");
 
         // add column names to front
         field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
@@ -191,7 +186,7 @@ module.exports = function (app, conString) {
         // JSON Output (DEFAULT)
         logger.info('Customizing for type JSON');
 
-        var json_result = {};
+        const json_result = {};
         json_result.source = query_parameter.db;
         json_result.schema = query_parameter.schema;
 
@@ -261,9 +256,9 @@ module.exports = function (app, conString) {
         const table_array = getTableArray(query_parameter.field);
 
         // create a string to add to sql statement
-        for (let n = 0; n < table_array.length; n++) {
-          join_table_list = `${join_table_list} natural join ${query_parameter.schema}.${table_array[n]}`;
-        }
+        table_array.forEach(d => {
+          join_table_list = `${join_table_list} natural join ${query_parameter.schema}.${d}`;
+        });
 
         // CONSTRUCT MAIN SQL STATEMENT
         const sql = `SELECT geoname, state, county, place, tract, bg, geonum, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
@@ -315,11 +310,11 @@ module.exports = function (app, conString) {
             logger.info('Successfully returned a list of fields from the database.');
             const queried_fields = []; // columns gathered from table(s?)
 
-            for (let i = 0; i < query_result.length; i++) {
-              if (query_result[i].column_name !== 'geonum') {
-                queried_fields.push(query_result[i].column_name);
+            query_result.forEach(d => {
+              if (d.column_name !== 'geonum') {
+                queried_fields.push(d.column_name);
               }
-            }
+            });
 
             field = queried_fields.join(','); // field is updated with fields queried from info schema based upon table
             resolve(field);
@@ -362,12 +357,12 @@ module.exports = function (app, conString) {
 
             const field_metadata_array = [];
 
-            for (let k = 0; k < field_metadata_query_result.length; k++) {
+            field_metadata_query_result.forEach(d => {
               const temp_obj = {};
-              temp_obj.column_id = field_metadata_query_result[k].column_id;
-              temp_obj.column_title = field_metadata_query_result[k].column_verbose;
+              temp_obj.column_id = d.column_id;
+              temp_obj.column_title = d.column_verbose;
               field_metadata_array.push(temp_obj);
-            } //end k
+            });
 
             logger.info('Your database request for field metadata has completed successfully.');
             resolve(field_metadata_array);
@@ -399,13 +394,13 @@ module.exports = function (app, conString) {
 
             const table_metadata_array = []; // table metadata array
 
-            for (let q = 0; q < table_metadata_query_result.length; q++) {
+            table_metadata_query_result.forEach(d => {
               const temp_obj = {};
-              temp_obj.table_id = table_metadata_query_result[q].table_id;
-              temp_obj.table_title = table_metadata_query_result[q].table_title;
-              temp_obj.universe = table_metadata_query_result[q].universe;
+              temp_obj.table_id = d.table_id;
+              temp_obj.table_title = d.table_title;
+              temp_obj.universe = d.universe;
               table_metadata_array.push(temp_obj);
-            }
+            });
 
             logger.info('Your database request for table metadata has completed successfully.');
             resolve(table_metadata_array);
