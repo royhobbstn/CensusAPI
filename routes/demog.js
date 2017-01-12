@@ -25,11 +25,11 @@
 
 // BREAKING - geonum is now a number type instead of a string
 
-var csv = require("express-csv"); // intellisense may flag this, but it is called
-var logger = require('../helpers/logger');
+const csv = require("express-csv"); // intellisense may flag this, but it is called
+const logger = require('../helpers/logger');
 
 
-var sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
+const sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
 
 
 module.exports = (app, conString) => {
@@ -44,51 +44,15 @@ module.exports = (app, conString) => {
     const query_parameter = getParams(req, res);
     logger.info('Parameters acquired.');
 
+
+    // program outline
     getFields() // get a full list of fields requested
-      .then(field_list => {
+      .then(parallelLoad) // run all queries
+      .then(writeResponse) // return response back to user
+      .catch(catchError); // or report error
 
-        query_parameter.field = addMarginOfErrorFields(field_list);
-        logger.info('Field Parameter Set');
 
-        const promise_array = [];
-
-        promise_array[0] = mainQuery(); // resolves to main query info
-
-        // do not make extra calls if metadata is not wanted
-        if (query_parameter.meta) {
-          promise_array[1] = getFieldMeta(); // resolves to metadata info
-          promise_array[2] = getTableMeta(); // resolves to table metadata info
-        }
-        else {
-          logger.info('Skipping metadata requests.');
-        }
-
-        Promise.all(promise_array)
-          .then(success => {
-            logger.info('Ready to assemble output.');
-            // this is where you combine all the info together (meta from fields 
-            // and tables, plus main query) into a final JS object to be returned
-            let response = assembleOutput(success);
-            logger.info(`--Time Elapsed: ${process.hrtime(start)[1] / 1000000}ms`);
-            logger.info('**COMPLETED**');
-
-            if (query_parameter.type === 'csv') {
-              // send CSV
-              res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
-              res.csv(response);
-            }
-            else {
-              // send JSON
-              const pretty_print_json = query_parameter.pretty ? '  ' : '';
-              response = (JSON.stringify(response, null, pretty_print_json));
-              res.setHeader("Content-Type", "application/json");
-              res.status(200).send(response);
-            }
-
-          }).catch(catchError);
-
-      }).catch(catchError);
-
+    //
     function catchError(reason) {
       logger.error('There has been an error: ' + reason);
       logger.info('**FAILED**');
@@ -96,6 +60,56 @@ module.exports = (app, conString) => {
     }
 
 
+    //
+    function writeResponse(success) {
+      logger.info('Ready to assemble output.');
+      // this is where you combine all the info together (meta from fields 
+      // and tables, plus main query) into a final JS object to be returned
+      let response = assembleOutput(success);
+      logger.info(`--Time Elapsed: ${process.hrtime(start)[1] / 1000000}ms`);
+      logger.info('**COMPLETED**');
+
+      if (query_parameter.type === 'csv') {
+        // send CSV
+        res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
+        res.csv(response);
+      }
+      else {
+        // send JSON
+        const pretty_print_json = query_parameter.pretty ? '  ' : '';
+        response = (JSON.stringify(response, null, pretty_print_json));
+        res.setHeader("Content-Type", "application/json");
+        res.status(200).send(response);
+      }
+    }
+
+    //
+    function parallelLoad(field_list) {
+      // calls main query, retrieves field and table metadata
+      // all async.  each of these calls is indpendent of each other
+      // promise.all returns when all three queries (or one, if metadata is turned off) return
+      query_parameter.field = addMarginOfErrorFields(field_list);
+      logger.info('Field Parameter Set');
+
+      const promise_array = [];
+
+      promise_array[0] = mainQuery(); // resolves to main query info
+
+      // do not make extra calls if metadata is not wanted
+      if (query_parameter.meta) {
+        promise_array[1] = getFieldMeta(); // resolves to metadata info
+        promise_array[2] = getTableMeta(); // resolves to table metadata info
+      }
+      else {
+        logger.info('Skipping metadata requests.');
+      }
+
+      return Promise.all(promise_array);
+    }
+
+
+
+    //
     function addMarginOfErrorFields(field_list) {
 
       // break the comma delimited records from field into an array  
@@ -125,6 +139,8 @@ module.exports = (app, conString) => {
 
     }
 
+
+    //
     function assembleOutput(promise_output) {
 
       const query_data = promise_output[0]; // main data object
@@ -143,69 +159,84 @@ module.exports = (app, conString) => {
       });
 
       if (query_parameter.type === 'csv') {
-        logger.info('Customizing for type CSV.');
-
-        const data_array_as_csv_array = []; // data_array changes from array of objects to array of arrays
-
-        data_array.forEach(d => {
-          const keys = Object.keys(d);
-          const temp_array = [];
-          keys.forEach(e => {
-            temp_array.push(d[e]);
-          });
-          data_array_as_csv_array.push(temp_array);
-        });
-
-        if (query_parameter.meta) {
-          logger.info('Writing CSV metadata.');
-          const csv_metadata_row = []; // array for csv field descriptions only
-
-          column_metadata.forEach(d => {
-            csv_metadata_row.push(d.column_title);
-          });
-
-          // add metadata to front (on second row)
-          csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
-
-          data_array_as_csv_array.unshift(csv_metadata_row);
-        }
-        else {
-          logger.info('Excluding metadata row from CSV.');
-        }
-
-
-        const field_name_row = query_parameter.field.split(",");
-
-        // add column names to front
-        field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
-        data_array_as_csv_array.unshift(field_name_row);
-
-        return data_array_as_csv_array;
+        return assembleCsvOutput(data_array, column_metadata);
       }
       else {
-        // JSON Output (DEFAULT)
-        logger.info('Customizing for type JSON');
-
-        const json_result = {};
-        json_result.source = query_parameter.db;
-        json_result.schema = query_parameter.schema;
-
-        if (query_parameter.meta) {
-          logger.info('Adding JSON metadata to returned result.');
-          json_result.tablemeta = table_metadata;
-          json_result.fieldmeta = column_metadata;
-        }
-        else {
-          logger.info('Excluding JSON metadata from returned result.');
-        }
-
-        json_result.data = data_array;
-        return json_result;
+        return assembleJsonOutput(table_metadata, column_metadata, data_array);
       }
 
     }
 
 
+    //
+    function assembleJsonOutput(table_metadata, column_metadata, data_array) {
+      // JSON Output (DEFAULT)
+      logger.info('Customizing for type JSON');
+
+      const json_result = {};
+      json_result.source = query_parameter.db;
+      json_result.schema = query_parameter.schema;
+
+      if (query_parameter.meta) {
+        logger.info('Adding JSON metadata to returned result.');
+        json_result.tablemeta = table_metadata;
+        json_result.fieldmeta = column_metadata;
+      }
+      else {
+        logger.info('Excluding JSON metadata from returned result.');
+      }
+
+      json_result.data = data_array;
+      return json_result;
+    }
+
+
+    //
+    function assembleCsvOutput(data_array, column_metadata) {
+      logger.info('Customizing for type CSV.');
+
+      const data_array_as_csv_array = []; // data_array changes from array of objects to array of arrays
+
+      data_array.forEach(d => {
+        const keys = Object.keys(d);
+        const temp_array = [];
+        keys.forEach(e => {
+          temp_array.push(d[e]);
+        });
+        data_array_as_csv_array.push(temp_array);
+      });
+
+      if (query_parameter.meta) {
+        logger.info('Writing CSV metadata.');
+        const csv_metadata_row = []; // array for csv field descriptions only
+
+        column_metadata.forEach(d => {
+          csv_metadata_row.push(d.column_title);
+        });
+
+        // add metadata to front (on second row)
+        csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
+
+        data_array_as_csv_array.unshift(csv_metadata_row);
+      }
+      else {
+        logger.info('Excluding metadata row from CSV.');
+      }
+
+
+      const field_name_row = query_parameter.field.split(",");
+
+      // add column names to front
+      field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
+      data_array_as_csv_array.unshift(field_name_row);
+
+      return data_array_as_csv_array;
+    }
+
+
+
+
+    //
     function mainQuery() {
 
       return new Promise((resolve, reject) => {
@@ -276,7 +307,7 @@ module.exports = (app, conString) => {
     }
 
 
-
+    //
     function getFields() {
 
       return new Promise((resolve, reject) => {
@@ -340,7 +371,7 @@ module.exports = (app, conString) => {
     } // end get fields
 
 
-
+    //
     function getFieldMeta() {
 
       return new Promise((resolve, reject) => {
@@ -377,7 +408,7 @@ module.exports = (app, conString) => {
     } // end getFieldMeta
 
 
-
+    //
     function getTableMeta() {
 
       return new Promise((resolve, reject) => {
@@ -552,7 +583,7 @@ function checkValidParams(query_params) {
 
   const keys = Object.keys(query_params);
 
-  var valid_keys = ['pretty', 'field', 'state', 'county', 'sumlev', 'place', 'geonum', 'geoid', 'db', 'schema', 'geo', 'series', 'type', 'limit', 'moe', 'table', 'meta'];
+  const valid_keys = ['pretty', 'field', 'state', 'county', 'sumlev', 'place', 'geonum', 'geoid', 'db', 'schema', 'geo', 'series', 'type', 'limit', 'moe', 'table', 'meta'];
 
   keys.forEach(key => {
     if (valid_keys.indexOf(key) === -1) {
