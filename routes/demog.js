@@ -1,27 +1,35 @@
 // returns from: http://nodejs-server-royhobbstn.c9users.io/demog?db=acs1115&schema=data&table=b19013&moe=yes&geonum=108037,108039&type=json
 
 /*
-{"source":"acs1115","schema":"data","tablemeta":[{"table_id":"b19013","table_title":"MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2015 INFLATION-ADJUSTED DOLLARS)","universe":"Universe:  Households"}],"fieldmeta":[{"column_id":"b19013001","column_title":"Median household income in the past 12 months (in 2015 Inflation-adjusted dollars)"}],"data":[{"geoname":"Eagle County, Colorado","state":"8","county":"37","place":null,"tract":null,"bg":null,"geonum":"108037","b19013001":"72214","b19013_moe001":"3789"},{"geoname":"Elbert County, Colorado","state":"8","county":"39","place":null,"tract":null,"bg":null,"geonum":"108039","b19013001":"84963","b19013_moe001":"4050"}],"error":[]}
+{"source":"acs1115","schema":"data","tablemeta":[{"table_id":"b19013","table_title":"MEDIAN HOUSEHOLD INCOME IN THE PAST 12 MONTHS (IN 2015 INFLATION-ADJUSTED DOLLARS)","universe":"Universe:  Households"}],"fieldmeta":[{"column_id":"b19013001","column_title":"Median household income in the past 12 months (in 2015 Inflation-adjusted dollars)"}],"data":[{"geoname":"Eagle County, Colorado","state":"8","county":"37","place":null,"tract":null,"bg":null,"geonum":108037,"geoid":"08037","b19013001":72214,"b19013_moe001":3789},{"geoname":"Elbert County, Colorado","state":"8","county":"39","place":null,"tract":null,"bg":null,"geonum":108039,"geoid":"08039","b19013001":84963,"b19013_moe001":4050}]}
 */
 
 'use strict';
 
+// V2 Breaking Changes
+// --------------------
+// GEOID added (string)
+// GEONUM is now an integer
+// STATE, COUNTY, PLACE now return full string equivalent (you can enter as integers, OR strings in query)
+// all returned data is now returned as Numbers rather than Strings
+// 'pretty' parameter added to optionally format json output
+// 'meta' added to optionally exclude metadata output
 
-// Numeric returning as String.  This is why: https://github.com/brianc/node-postgres/issues/339
-// use this: https://github.com/brianc/node-pg-types
+
+
+// TODO state, county, place, should all be treated as their full string equiv on export
 
 
 // TODO error handling everywhere
 // TODO interesting error case, &table=xkjd&table=sdfk creates an array of [xkjd,sdfk];
 // TODO test coverage (think of everywhere where you could cause a problem with the params)
+// TODO imagine extended geo situations
 // TODO yank the database and see what happens
 
 // TODO killer README with extended geo
 
 
-// BREAKING - geonum is now a number type instead of a string, state, county, place data is a number
-// full state, county, place ids acceptable instead of integer equiv
-// state, county, place, tract, bg should all be treated as their full string equiv on export
+
 
 const csv = require("express-csv"); // intellisense may flag this, but it is called
 const logger = require('../helpers/logger');

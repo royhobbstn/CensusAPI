@@ -2,6 +2,16 @@
 
 var pg = require('pg');
 var logger = require('./logger');
+var types = require('pg').types;
+
+
+types.setTypeParser(20, function (val) {
+    return parseInt(val, 10);
+});
+
+types.setTypeParser(1700, function (val) {
+    return Number(val);
+});
 
 
 exports.sendToDatabase = function (sqlstring, conString, db) {
