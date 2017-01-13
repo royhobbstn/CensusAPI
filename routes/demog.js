@@ -7,23 +7,21 @@
 'use strict';
 
 
-// TODO geonum is a num
-// TODO add geoid
-
-// TODO extended geography
-// TODO smart export filename CSV
+// Numeric returning as String.  This is why: https://github.com/brianc/node-postgres/issues/339
+// use this: https://github.com/brianc/node-pg-types
 
 
 // TODO error handling everywhere
-
 // TODO interesting error case, &table=xkjd&table=sdfk creates an array of [xkjd,sdfk];
 // TODO test coverage (think of everywhere where you could cause a problem with the params)
 // TODO yank the database and see what happens
 
-// TODO killer README
+// TODO killer README with extended geo
 
 
-// BREAKING - geonum is now a number type instead of a string
+// BREAKING - geonum is now a number type instead of a string, state, county, place data is a number
+// full state, county, place ids acceptable instead of integer equiv
+// state, county, place, tract, bg should all be treated as their full string equiv on export
 
 const csv = require("express-csv"); // intellisense may flag this, but it is called
 const logger = require('../helpers/logger');
@@ -71,7 +69,7 @@ module.exports = (app, conString) => {
 
       if (query_parameter.type === 'csv') {
         // send CSV
-        res.setHeader('Content-disposition', 'attachment; filename=CO_DemogExport.csv');
+        res.setHeader('Content-disposition', `attachment; filename=${query_parameter.db}_export.csv`);
         res.csv(response);
       }
       else {
@@ -195,27 +193,25 @@ module.exports = (app, conString) => {
     function assembleCsvOutput(data_array, column_metadata) {
       logger.info('Customizing for type CSV.');
 
-      const data_array_as_csv_array = []; // data_array changes from array of objects to array of arrays
-
-      data_array.forEach(d => {
+      // data_array changes from array of objects to array of arrays
+      const data_array_as_csv_array = data_array.map(d => {
         const keys = Object.keys(d);
-        const temp_array = [];
-        keys.forEach(e => {
-          temp_array.push(d[e]);
+        const temp_array = keys.map(e => {
+          return d[e];
         });
-        data_array_as_csv_array.push(temp_array);
+        return temp_array;
       });
 
       if (query_parameter.meta) {
         logger.info('Writing CSV metadata.');
-        const csv_metadata_row = []; // array for csv field descriptions only
 
-        column_metadata.forEach(d => {
-          csv_metadata_row.push(d.column_title);
+        // array for csv field descriptions only
+        const csv_metadata_row = column_metadata.map(d => {
+          return d.column_title;
         });
 
         // add metadata to front (on second row)
-        csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID");
+        csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID", "GEOID");
 
         data_array_as_csv_array.unshift(csv_metadata_row);
       }
@@ -227,7 +223,7 @@ module.exports = (app, conString) => {
       const field_name_row = query_parameter.field.split(",");
 
       // add column names to front
-      field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum");
+      field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum", "geoid");
       data_array_as_csv_array.unshift(field_name_row);
 
       return data_array_as_csv_array;
@@ -282,9 +278,9 @@ module.exports = (app, conString) => {
           reject('No Geography in query.  Please specify either a geoname, geonum, sumlev, county, or state.');
         }
 
-        let join_table_list = ""; // working string of tables to be inserted into sql query
-
         const table_array = getTableArray(query_parameter.field);
+
+        let join_table_list = ""; // working string of tables to be inserted into sql query
 
         // create a string to add to sql statement
         table_array.forEach(d => {
@@ -292,7 +288,7 @@ module.exports = (app, conString) => {
         });
 
         // CONSTRUCT MAIN SQL STATEMENT
-        const sql = `SELECT geoname, state, county, place, tract, bg, geonum, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
+        const sql = `SELECT geoname, state, county, place, tract, bg, geonum, geoid, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
 
         logger.info('Sending Main Query to the Database.');
         sendToDatabase(sql, conString, query_parameter.db).then(success => {
@@ -339,6 +335,7 @@ module.exports = (app, conString) => {
             }
 
             logger.info('Successfully returned a list of fields from the database.');
+
             const queried_fields = []; // columns gathered from table(s?)
 
             query_result.forEach(d => {
@@ -386,13 +383,11 @@ module.exports = (app, conString) => {
         sendToDatabase(field_metadata_sql, conString, query_parameter.db)
           .then(field_metadata_query_result => {
 
-            const field_metadata_array = [];
-
-            field_metadata_query_result.forEach(d => {
+            const field_metadata_array = field_metadata_query_result.map(d => {
               const temp_obj = {};
               temp_obj.column_id = d.column_id;
               temp_obj.column_title = d.column_verbose;
-              field_metadata_array.push(temp_obj);
+              return temp_obj;
             });
 
             logger.info('Your database request for field metadata has completed successfully.');
@@ -423,14 +418,12 @@ module.exports = (app, conString) => {
         sendToDatabase(table_metadata_sql, conString, query_parameter.db)
           .then(table_metadata_query_result => {
 
-            const table_metadata_array = []; // table metadata array
-
-            table_metadata_query_result.forEach(d => {
+            const table_metadata_array = table_metadata_query_result.map(d => {
               const temp_obj = {};
               temp_obj.table_id = d.table_id;
               temp_obj.table_title = d.table_title;
               temp_obj.universe = d.universe;
-              table_metadata_array.push(temp_obj);
+              return temp_obj;
             });
 
             logger.info('Your database request for table metadata has completed successfully.');
@@ -632,10 +625,8 @@ function getTableArray(fields) {
 
   const field_list = fields.split(",");
 
-  let table_list = [];
-
-  field_list.forEach(d => {
-    table_list.push(d.slice(0, -3));
+  let table_list = field_list.map(d => {
+    return d.slice(0, -3);
   });
 
   // remove duplicate tables in array
