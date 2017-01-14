@@ -4,7 +4,7 @@
   "description": "microservices to query nationwide census data from the colorado state demography office online database",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "./node_modules/.bin/istanbul cover ./node_modules/mocha/bin/_mocha test/*",
     "start": "nodemon ./index.js"
   },
   "repository": {
@@ -30,6 +30,8 @@
     "winston": "^2.3.0"
   },
   "devDependencies": {
+    "istanbul": "^0.4.5",
+    "mocha": "^3.2.0",
     "nodemon": "^1.11.0"
   }
 }

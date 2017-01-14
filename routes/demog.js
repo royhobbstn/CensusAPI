@@ -17,12 +17,10 @@
 
 
 
-// TODO state, county, place, should all be treated as their full string equiv on export
-
-
+// TODO test coverage (think of everywhere where you could cause a problem with the params)
 // TODO error handling everywhere
 // TODO interesting error case, &table=xkjd&table=sdfk creates an array of [xkjd,sdfk];
-// TODO test coverage (think of everywhere where you could cause a problem with the params)
+
 // TODO imagine extended geo situations
 // TODO yank the database and see what happens
 
@@ -36,9 +34,13 @@ const logger = require('../helpers/logger');
 
 
 const sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
+const pad = require('../helpers/helpers.js').pad;
+const sqlList = require('../helpers/helpers.js').sqlList;
 
 
-module.exports = (app, conString) => {
+
+
+module.exports = (app) => {
 
   app.get('/demog', (req, res) => {
 
@@ -158,9 +160,9 @@ module.exports = (app, conString) => {
 
       const data_array = query_data.map(d => {
         // convert non-null values of state, place, and county to their string equivalent
-        d.state = (d.state !== null) ? (d.state).toString() : null;
-        d.place = (d.place !== null) ? (d.place).toString() : null;
-        d.county = (d.county !== null) ? (d.county).toString() : null;
+        d.state = (d.state !== null) ? pad(d.state, 2, '0') : null;
+        d.place = (d.place !== null) ? pad(d.place, 5, '0') : null;
+        d.county = (d.county !== null) ? pad(d.county, 3, '0') : null;
         return d;
       });
 
@@ -299,7 +301,7 @@ module.exports = (app, conString) => {
         const sql = `SELECT geoname, state, county, place, tract, bg, geonum, geoid, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
 
         logger.info('Sending Main Query to the Database.');
-        sendToDatabase(sql, conString, query_parameter.db).then(success => {
+        sendToDatabase(sql, query_parameter.db).then(success => {
           logger.info('Main Query result successfully returned.');
           resolve(success);
         }, failure => {
@@ -334,7 +336,7 @@ module.exports = (app, conString) => {
           const table_sql = `SELECT column_name from information_schema.columns where (${table_list}) and table_schema='${schema}';`;
 
           logger.info('Sending request for a list of fields to the database.');
-          const make_call_for_fields = sendToDatabase(table_sql, conString, db);
+          const make_call_for_fields = sendToDatabase(table_sql, db);
 
           make_call_for_fields.then(query_result => {
 
@@ -388,7 +390,7 @@ module.exports = (app, conString) => {
 
         logger.info('Sending request for field metadata to the database.');
 
-        sendToDatabase(field_metadata_sql, conString, query_parameter.db)
+        sendToDatabase(field_metadata_sql, query_parameter.db)
           .then(field_metadata_query_result => {
 
             const field_metadata_array = field_metadata_query_result.map(d => {
@@ -423,7 +425,7 @@ module.exports = (app, conString) => {
 
         logger.info('Sending request for table metadata to the database.');
 
-        sendToDatabase(table_metadata_sql, conString, query_parameter.db)
+        sendToDatabase(table_metadata_sql, query_parameter.db)
           .then(table_metadata_query_result => {
 
             const table_metadata_array = table_metadata_query_result.map(d => {
@@ -459,28 +461,6 @@ module.exports = (app, conString) => {
 
 
 
-function sqlList(string_list_or_array, field_name) {
-  // convert a string list or array into a WHERE clause (using OR)
-
-  let list_array = [];
-
-  // will work with arrays or comma delimited strings
-  if (!Array.isArray(string_list_or_array)) {
-    list_array = string_list_or_array.split(",");
-  }
-  else {
-    list_array = string_list_or_array;
-  }
-
-  let str = "";
-  list_array.forEach(d => {
-    str = `${str} ${field_name}='${d}' or`;
-  });
-
-  // remove trailing 'or'
-  return str.slice(0, -2);
-
-}
 
 
 function setDefaultSchema(db) {

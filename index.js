@@ -17,7 +17,7 @@ var allowCrossDomain = function (req, res, next) {
 app.use(allowCrossDomain);
 
 require("./routes/meta.js")(app, pg, conString);
-require("./routes/demog.js")(app, conString);
+require("./routes/demog.js")(app);
 require("./routes/geojson.js")(app, pg, conString);
 
 
