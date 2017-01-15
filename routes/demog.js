@@ -31,15 +31,18 @@
 
 const csv = require("express-csv"); // intellisense may flag this, but it is called
 
-const logger = require('../helpers/logger');
-const _h = require('../helpers/helpers.js');
+const logger = require('../helpers/logger.js');
 
 const setDefaultSchema = require('../helpers/helpers.js').setDefaultSchema;
 const getMOE = require('../helpers/helpers.js').getMOE;
 const getPretty = require('../helpers/helpers.js').getPretty;
-const onlyUnique = require('../helpers/helpers.js').onlyUnique;
 const getMeta = require('../helpers/helpers.js').getMeta;
-
+const getFields = require('../helpers/helpers.js').getFields;
+const addMarginOfErrorFields = require('../helpers/helpers.js').addMarginOfErrorFields;
+const getTableArray = require('../helpers/helpers.js').getTableArray;
+const sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
+const sqlList = require('../helpers/helpers.js').sqlList;
+const pad = require('../helpers/helpers.js').pad;
 
 
 module.exports = (app) => {
@@ -56,7 +59,7 @@ module.exports = (app) => {
 
 
     // program outline
-    getFields() // get a full list of fields requested
+    getFields(query_parameter) // get a full list of fields requested
       .then(parallelLoad) // run all queries
       .then(writeResponse) // return response back to user
       .catch(catchError); // or report error
@@ -134,7 +137,7 @@ module.exports = (app) => {
             logger.warn('You specified either STATE, COUNTY, SUMLEV or GEOID.  These parameters are ignored when you also specify GEONUM');
           }
 
-          where_clause = _h.sqlList(query_parameter.geonum, 'geonum');
+          where_clause = sqlList(query_parameter.geonum, 'geonum');
         }
         else if (query_parameter.geoid) {
           // CASE 2:  you have a geoid. just get the data for that/those geoid(s)
@@ -145,16 +148,16 @@ module.exports = (app) => {
           }
 
           const geonum_list = `1${query_parameter.geoid.replace(/,/g, ',1')}`; // convert geoids to geonums
-          where_clause = _h.sqlList(geonum_list, "geonum");
+          where_clause = sqlList(geonum_list, "geonum");
         }
         else if (query_parameter.sumlev || query_parameter.county || query_parameter.state) {
           // CASE 3 - query
           logger.info('CASE 3: Query using one or all of: sumlev, county, or state.');
           const condition = getConditionString(query_parameter.sumlev, query_parameter.county, query_parameter.state);
 
-          const countylist = query_parameter.county ? _h.sqlList(query_parameter.county, 'county') : '';
-          const statelist = query_parameter.state ? _h.sqlList(query_parameter.state, 'state') : '';
-          const sumlevlist = query_parameter.sumlev ? _h.sqlList(query_parameter.sumlev, 'sumlev') : '';
+          const countylist = query_parameter.county ? sqlList(query_parameter.county, 'county') : '';
+          const statelist = query_parameter.state ? sqlList(query_parameter.state, 'state') : '';
+          const sumlevlist = query_parameter.sumlev ? sqlList(query_parameter.sumlev, 'sumlev') : '';
 
           where_clause = constructWhereClause(condition, statelist, countylist, sumlevlist);
 
@@ -178,7 +181,7 @@ module.exports = (app) => {
         const sql = `SELECT geoname, state, county, place, tract, bg, geonum, geoid, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
 
         logger.info('Sending Main Query to the Database.');
-        _h.sendToDatabase(sql, query_parameter.db).then(success => {
+        sendToDatabase(sql, query_parameter.db).then(success => {
           logger.info('Main Query result successfully returned.');
           resolve(success);
         }, failure => {
@@ -190,62 +193,7 @@ module.exports = (app) => {
     }
 
 
-    //
-    function getFields() {
 
-      return new Promise((resolve, reject) => {
-        let field = query_parameter.field;
-        const table = query_parameter.table;
-        const schema = query_parameter.schema;
-        const db = query_parameter.db;
-
-        // if no fields are selected (then a table must be).  Create fields list based on the given table.
-        if (!field) {
-          logger.info('There are no fields in your query.  Retrieving a list of fields based upon your requested tables.');
-
-          if (!table) {
-            reject('You need to specify either table names or field names in your query.');
-          }
-
-          const table_list = _h.sqlList(table, 'table_name');
-
-          // Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
-          const table_sql = `SELECT column_name from information_schema.columns where (${table_list}) and table_schema='${schema}';`;
-
-          logger.info('Sending request for a list of fields to the database.');
-
-          _h.sendToDatabase(table_sql, db)
-            .then(query_result => {
-
-              if (query_result.length === 0) {
-                reject('There are no valid field or table names in your request.');
-              }
-
-              logger.info('Successfully returned a list of fields from the database.');
-
-              const queried_filed_list = createQueriedFieldList(query_result);
-
-              resolve(queried_filed_list);
-
-            }, failure => {
-              logger.error('Your database request for a list of fields has failed.');
-              reject(failure);
-            });
-
-
-        }
-        else {
-          logger.info('You have specified field(s) in your query.');
-
-          if (query_parameter.table) {
-            logger.warn('You specified TABLE.  This parameter is ignored when you also specify FIELD');
-          }
-          resolve(field);
-        }
-
-      }); // end new promise
-
-    } // end get fields
 
 
     //
@@ -254,13 +202,13 @@ module.exports = (app) => {
       return new Promise((resolve, reject) => {
 
         const field_array = query_parameter.field.split(",");
-        const field_clause = _h.sqlList(field_array, 'column_id');
+        const field_clause = sqlList(field_array, 'column_id');
 
         const field_metadata_sql = `SELECT column_id, column_verbose from ${query_parameter.schema}.census_column_metadata where ${field_clause};`;
 
         logger.info('Sending request for field metadata to the database.');
 
-        _h.sendToDatabase(field_metadata_sql, query_parameter.db)
+        sendToDatabase(field_metadata_sql, query_parameter.db)
           .then(field_metadata_query_result => {
 
             const field_metadata_array = mapFieldMetadataQueryResult(field_metadata_query_result);
@@ -284,13 +232,13 @@ module.exports = (app) => {
       return new Promise((resolve, reject) => {
 
         const table_array = getTableArray(query_parameter.field);
-        const table_clause = _h.sqlList(table_array, 'table_id');
+        const table_clause = sqlList(table_array, 'table_id');
 
         const table_metadata_sql = `SELECT table_id, table_title, universe from ${query_parameter.schema}.census_table_metadata where${table_clause};`;
 
         logger.info('Sending request for table metadata to the database.');
 
-        _h.sendToDatabase(table_metadata_sql, query_parameter.db)
+        sendToDatabase(table_metadata_sql, query_parameter.db)
           .then(table_metadata_query_result => {
 
             const table_metadata_array = mapTableMetadataQueryResult(table_metadata_query_result);
@@ -422,21 +370,6 @@ function constructWhereClause(condition, statelist, countylist, sumlevlist) {
 }
 
 
-function getTableArray(fields) {
-  // get a list of tables based upon characters in each field name  (convention: last 3 characters identify field number, previous characters are table name) 
-
-  const field_list = fields.split(",");
-
-  let table_list = field_list.map(d => {
-    return d.slice(0, -3);
-  });
-
-  // remove duplicate tables in array
-  table_list = table_list.filter(onlyUnique);
-
-  return table_list;
-}
-
 
 function mapFieldMetadataQueryResult(field_metadata_query_result) {
   return field_metadata_query_result.map(d => {
@@ -451,9 +384,9 @@ function mapFieldMetadataQueryResult(field_metadata_query_result) {
 function stringifyStatePlaceCounty(query_data) {
   // convert non-null values of state, place, and county to their string equivalent
   return query_data.map(d => {
-    d.state = (d.state !== null) ? _h.pad(d.state, 2, '0') : null;
-    d.place = (d.place !== null) ? _h.pad(d.place, 5, '0') : null;
-    d.county = (d.county !== null) ? _h.pad(d.county, 3, '0') : null;
+    d.state = (d.state !== null) ? pad(d.state, 2, '0') : null;
+    d.place = (d.place !== null) ? pad(d.place, 5, '0') : null;
+    d.county = (d.county !== null) ? pad(d.county, 3, '0') : null;
     return d;
   });
 }
@@ -470,34 +403,7 @@ function mapTableMetadataQueryResult(table_metadata_query_result) {
 }
 
 
-function addMarginOfErrorFields(field_list, moe) {
 
-  // break the comma delimited records from field into an array  
-  let field_array = field_list.split(",");
-
-  const moe_fields = [];
-
-  // if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
-  if (moe) {
-    logger.info('Adding margin of error fields.');
-
-    // if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
-    field_array.forEach(d => {
-      if (d.indexOf('_moe') === -1) {
-        moe_fields.push(`${d.slice(0, -3)}_moe${d.slice(-3)}`);
-      }
-    });
-
-    field_array = field_array.concat(moe_fields); // add in MOE fields
-  }
-
-  field_array = field_array.filter(onlyUnique);
-
-  // send moe modified field list back to main field list
-  // if there were no modifications, it was returned back the same (split/join canceled each other out)
-  return field_array.join(',');
-
-}
 
 
 function assembleOutput(promise_output, type, meta, field, db, schema) {
@@ -583,19 +489,4 @@ function assembleJsonOutput(table_metadata, column_metadata, data_array, meta, d
 
   json_result.data = data_array;
   return json_result;
-}
-
-
-function createQueriedFieldList(query_result) {
-  const queried_fields = []; // columns gathered from table(s?)
-
-  query_result.forEach(d => {
-    if (d.column_name !== 'geonum') {
-      queried_fields.push(d.column_name);
-    }
-  });
-
-  const queried_filed_list = queried_fields.join(','); // field is updated with fields queried from info schema based upon table
-
-  return queried_filed_list;
 }

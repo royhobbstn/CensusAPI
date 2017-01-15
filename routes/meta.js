@@ -1,7 +1,7 @@
 // return all metadata for a given database/schema combination
 
 var sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
-var logger = require('../helpers/logger');
+var logger = require('../helpers/logger.js');
 
 
 
