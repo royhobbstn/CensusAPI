@@ -39,7 +39,7 @@ exports.sendToDatabase = function (sqlstring, db) {
 
                 client.query(sqlstring, (err, result) => {
                     client.end();
-                    err ? reject(`Error in databas query: ${err}`) : resolve(result.rows);
+                    err ? reject(`Error in database query: ${err}`) : resolve(result.rows);
                 });
 
             } // end else (no error condition)
@@ -81,4 +81,54 @@ exports.pad = function (n, width, z) {
     z = z || '0';
     n = n + '';
     return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+};
+
+
+
+exports.setDefaultSchema = function (db) {
+    // db already validated.  setting default to 'data' ensures easier compatibility with future ACS releases.
+
+    if (db === 'c2000' || db === 'c1990' || db === 'c1980') {
+        return 'sf1';
+    }
+    else {
+        return 'data';
+    }
+};
+
+
+exports.getMOE = function (db, moe) {
+    // if database is acs, check to see if moe option is flagged
+
+    if (db.slice(0, 3) === 'acs') {
+        if (moe === 'yes' || moe === 'y' || moe === 'true') {
+            return true;
+        }
+    }
+    return false;
+};
+
+
+exports.getPretty = function (pretty) {
+    // pretty-print JSON option
+
+    if (pretty === 'yes' || pretty === 'y' || pretty === 'true') {
+        return true;
+    }
+    return false;
+};
+
+
+exports.onlyUnique = function (value, index, self) {
+    // how does this work??
+    return self.indexOf(value) === index;
+};
+
+
+exports.getMeta = function (meta) {
+    // get true/false meta parameter
+    if (meta === 'no' || meta === 'n' || meta === 'false') {
+        return false;
+    }
+    return true;
 };

@@ -1,73 +1,50 @@
-//MICROSERVICE for 
+// return all metadata for a given database/schema combination
 
-//returns:
-/*
-http://red-meteor-147235.nitrousapp.com:4000/advsearch?advsumlev=50&advstate=6&advsign=gt&advtext=20000&advtable=b19013&advnumerator=fp.b19013001&advdenominator=1
+var sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
+var logger = require('../helpers/logger');
 
 
-*/
-module.exports = function (app, pg, conString) {
+
+module.exports = function (app) {
+
 
     app.get('/meta', function (req, res) {
 
-        //potential multi select (comma delimited list)
+        logger.info('Starting /meta route.');
+
         var db = req.query.db || "acs1115";
         var schema = req.query.schema || "data";
 
-        //Query metadata
+        logger.info('db: ' + db + '\nschema: ' + schema);
+
         var tblsql = "SELECT table_id, table_title, universe from " + schema + ".census_table_metadata;";
 
+        sendToDatabase(tblsql, db).then(function (result) {
 
-        sendtodatabase(tblsql);
+            logger.info('result returned from /meta call');
 
-
-        function sendtodatabase(sqlstring) {
-
-            var client = new pg.Client(conString + db);
-
-            client.connect(function (err) {
-
-                if (err) {
-                    return console.error('could not connect to postgres', err);
-                }
-
-                client.query(sqlstring, function (err, result) {
-
-                    if (err) {
-                        return console.error('error running query', err);
-                    }
-
-
-
-                    var tableresult = result.rows;
-
-                    var tblarrfull = [];
-                    var tblarr = {};
-
-                    for (var i = 0; i < tableresult.length; i++) {
-                        tblarr = {};
-                        tblarr.table_id = tableresult[i].table_id;
-                        tblarr.table_title = tableresult[i].table_title;
-                        tblarr.universe = tableresult[i].universe;
-                        tblarrfull.push(tblarr);
-                    }
-
-
-
-                    res.set({
-                        "Content-Type": "application/json"
-                    });
-                    res.send(JSON.stringify(tblarrfull));
-
-
-
-
-                    client.end();
-
-                });
+            var all_metadata = result.map(d => {
+                var temp_obj = {};
+                temp_obj.table_id = d.table_id;
+                temp_obj.table_title = d.table_title;
+                temp_obj.universe = d.universe;
+                return temp_obj;
             });
-        }
 
-    });
+            logger.info('data processed.  returning to user as JSON.');
 
-}
+            res.set({
+                "Content-Type": "application/json"
+            });
+            res.send(JSON.stringify(all_metadata));
+
+        }, function (error) {
+            logger.info('There has been an error.');
+            logger.error(error);
+            res.status(500).send(error);
+        });
+
+
+    }); // end route
+
+}; // end module

@@ -30,13 +30,15 @@
 
 
 const csv = require("express-csv"); // intellisense may flag this, but it is called
+
 const logger = require('../helpers/logger');
+const _h = require('../helpers/helpers.js');
 
-
-const sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
-const pad = require('../helpers/helpers.js').pad;
-const sqlList = require('../helpers/helpers.js').sqlList;
-
+const setDefaultSchema = require('../helpers/helpers.js').setDefaultSchema;
+const getMOE = require('../helpers/helpers.js').getMOE;
+const getPretty = require('../helpers/helpers.js').getPretty;
+const onlyUnique = require('../helpers/helpers.js').onlyUnique;
+const getMeta = require('../helpers/helpers.js').getMeta;
 
 
 
@@ -49,7 +51,7 @@ module.exports = (app) => {
     logger.info('**START**');
 
     // set defaults on parameters and assign them to an object called query_parameter
-    const query_parameter = getParams(req, res);
+    const query_parameter = getParams(req);
     logger.info('Parameters acquired.');
 
 
@@ -73,7 +75,7 @@ module.exports = (app) => {
       logger.info('Ready to assemble output.');
       // this is where you combine all the info together (meta from fields 
       // and tables, plus main query) into a final JS object to be returned
-      let response = assembleOutput(success);
+      let response = assembleOutput(success, query_parameter.type, query_parameter.meta, query_parameter.field, query_parameter.db, query_parameter.schema);
       logger.info(`--Time Elapsed: ${process.hrtime(start)[1] / 1000000}ms`);
       logger.info('**COMPLETED**');
 
@@ -96,7 +98,7 @@ module.exports = (app) => {
       // calls main query, retrieves field and table metadata
       // all async.  each of these calls is indpendent of each other
       // promise.all returns when all three queries (or one, if metadata is turned off) return
-      query_parameter.field = addMarginOfErrorFields(field_list);
+      query_parameter.field = addMarginOfErrorFields(field_list, query_parameter.moe);
       logger.info('Field Parameter Set');
 
       const promise_array = [];
@@ -118,131 +120,6 @@ module.exports = (app) => {
 
 
     //
-    function addMarginOfErrorFields(field_list) {
-
-      // break the comma delimited records from field into an array  
-      let field_array = field_list.split(",");
-
-      const moe_fields = [];
-
-      // if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
-      if (query_parameter.moe) {
-        logger.info('Adding margin of error fields.');
-
-        // if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
-        field_array.forEach(d => {
-          if (d.indexOf('_moe') === -1) {
-            moe_fields.push(`${d.slice(0, -3)}_moe${d.slice(-3)}`);
-          }
-        });
-
-        field_array = field_array.concat(moe_fields); // add in MOE fields
-      }
-
-      field_array = field_array.filter(onlyUnique);
-
-      // send moe modified field list back to main field list
-      // if there were no modifications, it was returned back the same (split/join canceled each other out)
-      return field_array.join(',');
-
-    }
-
-
-    //
-    function assembleOutput(promise_output) {
-
-      const query_data = promise_output[0]; // main data object
-
-      if (query_parameter.meta) {
-        var column_metadata = promise_output[1];
-        var table_metadata = promise_output[2];
-      }
-
-      const data_array = query_data.map(d => {
-        // convert non-null values of state, place, and county to their string equivalent
-        d.state = (d.state !== null) ? pad(d.state, 2, '0') : null;
-        d.place = (d.place !== null) ? pad(d.place, 5, '0') : null;
-        d.county = (d.county !== null) ? pad(d.county, 3, '0') : null;
-        return d;
-      });
-
-      if (query_parameter.type === 'csv') {
-        return assembleCsvOutput(data_array, column_metadata);
-      }
-      else {
-        return assembleJsonOutput(table_metadata, column_metadata, data_array);
-      }
-
-    }
-
-
-    //
-    function assembleJsonOutput(table_metadata, column_metadata, data_array) {
-      // JSON Output (DEFAULT)
-      logger.info('Customizing for type JSON');
-
-      const json_result = {};
-      json_result.source = query_parameter.db;
-      json_result.schema = query_parameter.schema;
-
-      if (query_parameter.meta) {
-        logger.info('Adding JSON metadata to returned result.');
-        json_result.tablemeta = table_metadata;
-        json_result.fieldmeta = column_metadata;
-      }
-      else {
-        logger.info('Excluding JSON metadata from returned result.');
-      }
-
-      json_result.data = data_array;
-      return json_result;
-    }
-
-
-    //
-    function assembleCsvOutput(data_array, column_metadata) {
-      logger.info('Customizing for type CSV.');
-
-      // data_array changes from array of objects to array of arrays
-      const data_array_as_csv_array = data_array.map(d => {
-        const keys = Object.keys(d);
-        const temp_array = keys.map(e => {
-          return d[e];
-        });
-        return temp_array;
-      });
-
-      if (query_parameter.meta) {
-        logger.info('Writing CSV metadata.');
-
-        // array for csv field descriptions only
-        const csv_metadata_row = column_metadata.map(d => {
-          return d.column_title;
-        });
-
-        // add metadata to front (on second row)
-        csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID", "GEOID");
-
-        data_array_as_csv_array.unshift(csv_metadata_row);
-      }
-      else {
-        logger.info('Excluding metadata row from CSV.');
-      }
-
-
-      const field_name_row = query_parameter.field.split(",");
-
-      // add column names to front
-      field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum", "geoid");
-      data_array_as_csv_array.unshift(field_name_row);
-
-      return data_array_as_csv_array;
-    }
-
-
-
-
-    //
     function mainQuery() {
 
       return new Promise((resolve, reject) => {
@@ -257,7 +134,7 @@ module.exports = (app) => {
             logger.warn('You specified either STATE, COUNTY, SUMLEV or GEOID.  These parameters are ignored when you also specify GEONUM');
           }
 
-          where_clause = sqlList(query_parameter.geonum, 'geonum');
+          where_clause = _h.sqlList(query_parameter.geonum, 'geonum');
         }
         else if (query_parameter.geoid) {
           // CASE 2:  you have a geoid. just get the data for that/those geoid(s)
@@ -268,16 +145,16 @@ module.exports = (app) => {
           }
 
           const geonum_list = `1${query_parameter.geoid.replace(/,/g, ',1')}`; // convert geoids to geonums
-          where_clause = sqlList(geonum_list, "geonum");
+          where_clause = _h.sqlList(geonum_list, "geonum");
         }
         else if (query_parameter.sumlev || query_parameter.county || query_parameter.state) {
           // CASE 3 - query
           logger.info('CASE 3: Query using one or all of: sumlev, county, or state.');
           const condition = getConditionString(query_parameter.sumlev, query_parameter.county, query_parameter.state);
 
-          const countylist = query_parameter.county ? sqlList(query_parameter.county, 'county') : '';
-          const statelist = query_parameter.state ? sqlList(query_parameter.state, 'state') : '';
-          const sumlevlist = query_parameter.sumlev ? sqlList(query_parameter.sumlev, 'sumlev') : '';
+          const countylist = query_parameter.county ? _h.sqlList(query_parameter.county, 'county') : '';
+          const statelist = query_parameter.state ? _h.sqlList(query_parameter.state, 'state') : '';
+          const sumlevlist = query_parameter.sumlev ? _h.sqlList(query_parameter.sumlev, 'sumlev') : '';
 
           where_clause = constructWhereClause(condition, statelist, countylist, sumlevlist);
 
@@ -301,7 +178,7 @@ module.exports = (app) => {
         const sql = `SELECT geoname, state, county, place, tract, bg, geonum, geoid, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
 
         logger.info('Sending Main Query to the Database.');
-        sendToDatabase(sql, query_parameter.db).then(success => {
+        _h.sendToDatabase(sql, query_parameter.db).then(success => {
           logger.info('Main Query result successfully returned.');
           resolve(success);
         }, failure => {
@@ -330,37 +207,30 @@ module.exports = (app) => {
             reject('You need to specify either table names or field names in your query.');
           }
 
-          const table_list = sqlList(table, 'table_name');
+          const table_list = _h.sqlList(table, 'table_name');
 
           // Query table fields --ONLY SINGLE TABLE SELECT AT THIS TIME--
           const table_sql = `SELECT column_name from information_schema.columns where (${table_list}) and table_schema='${schema}';`;
 
           logger.info('Sending request for a list of fields to the database.');
-          const make_call_for_fields = sendToDatabase(table_sql, db);
 
-          make_call_for_fields.then(query_result => {
+          _h.sendToDatabase(table_sql, db)
+            .then(query_result => {
 
-            if (query_result.length === 0) {
-              reject('There are no valid field or table names in your request.');
-            }
-
-            logger.info('Successfully returned a list of fields from the database.');
-
-            const queried_fields = []; // columns gathered from table(s?)
-
-            query_result.forEach(d => {
-              if (d.column_name !== 'geonum') {
-                queried_fields.push(d.column_name);
+              if (query_result.length === 0) {
+                reject('There are no valid field or table names in your request.');
               }
+
+              logger.info('Successfully returned a list of fields from the database.');
+
+              const queried_filed_list = createQueriedFieldList(query_result);
+
+              resolve(queried_filed_list);
+
+            }, failure => {
+              logger.error('Your database request for a list of fields has failed.');
+              reject(failure);
             });
-
-            field = queried_fields.join(','); // field is updated with fields queried from info schema based upon table
-            resolve(field);
-
-          }, failure => {
-            logger.error('Your database request for a list of fields has failed.');
-            reject(failure);
-          });
 
 
         }
@@ -384,21 +254,16 @@ module.exports = (app) => {
       return new Promise((resolve, reject) => {
 
         const field_array = query_parameter.field.split(",");
-        const field_clause = sqlList(field_array, 'column_id');
+        const field_clause = _h.sqlList(field_array, 'column_id');
 
         const field_metadata_sql = `SELECT column_id, column_verbose from ${query_parameter.schema}.census_column_metadata where ${field_clause};`;
 
         logger.info('Sending request for field metadata to the database.');
 
-        sendToDatabase(field_metadata_sql, query_parameter.db)
+        _h.sendToDatabase(field_metadata_sql, query_parameter.db)
           .then(field_metadata_query_result => {
 
-            const field_metadata_array = field_metadata_query_result.map(d => {
-              const temp_obj = {};
-              temp_obj.column_id = d.column_id;
-              temp_obj.column_title = d.column_verbose;
-              return temp_obj;
-            });
+            const field_metadata_array = mapFieldMetadataQueryResult(field_metadata_query_result);
 
             logger.info('Your database request for field metadata has completed successfully.');
             resolve(field_metadata_array);
@@ -419,22 +284,16 @@ module.exports = (app) => {
       return new Promise((resolve, reject) => {
 
         const table_array = getTableArray(query_parameter.field);
-        const table_clause = sqlList(table_array, 'table_id');
+        const table_clause = _h.sqlList(table_array, 'table_id');
 
         const table_metadata_sql = `SELECT table_id, table_title, universe from ${query_parameter.schema}.census_table_metadata where${table_clause};`;
 
         logger.info('Sending request for table metadata to the database.');
 
-        sendToDatabase(table_metadata_sql, query_parameter.db)
+        _h.sendToDatabase(table_metadata_sql, query_parameter.db)
           .then(table_metadata_query_result => {
 
-            const table_metadata_array = table_metadata_query_result.map(d => {
-              const temp_obj = {};
-              temp_obj.table_id = d.table_id;
-              temp_obj.table_title = d.table_title;
-              temp_obj.universe = d.universe;
-              return temp_obj;
-            });
+            const table_metadata_array = mapTableMetadataQueryResult(table_metadata_query_result);
 
             logger.info('Your database request for table metadata has completed successfully.');
             resolve(table_metadata_array);
@@ -463,53 +322,8 @@ module.exports = (app) => {
 
 
 
-function setDefaultSchema(db) {
-  // db already validated.  setting default to 'data' ensures easier compatibility with future ACS releases.
-
-  if (db === 'c2000' || db === 'c1990' || db === 'c1980') {
-    return 'sf1';
-  }
-  else {
-    return 'data';
-  }
-}
 
 
-function getMOE(db, moe) {
-  // if database is acs, check to see if moe option is flagged
-
-  if (db.slice(0, 3) === 'acs') {
-    if (moe === 'yes' || moe === 'y' || moe === 'true') {
-      return true;
-    }
-  }
-  return false;
-}
-
-
-function getPretty(pretty) {
-  // pretty-print JSON option
-
-  if (pretty === 'yes' || pretty === 'y' || pretty === 'true') {
-    return true;
-  }
-  return false;
-}
-
-// how does this work??
-function onlyUnique(value, index, self) {
-  return self.indexOf(value) === index;
-}
-
-
-function getMeta(meta) {
-  // get true/false meta parameter
-
-  if (meta === 'no' || meta === 'n' || meta === 'false') {
-    return false;
-  }
-  return true;
-}
 
 
 function getConditionString(sumlev, county, state) {
@@ -524,7 +338,7 @@ function getConditionString(sumlev, county, state) {
 }
 
 
-function getParams(req, res) {
+function getParams(req) {
 
   checkValidParams(req.query);
 
@@ -545,7 +359,7 @@ function getParams(req, res) {
   obj.db = req.query.db || 'acs1115';
 
   // set default for schema if it is missing
-  obj.schema = req.query.schema || setDefaultSchema(obj.db, res);
+  obj.schema = req.query.schema || setDefaultSchema(obj.db);
 
   // by default limits to 1000 search results.  override by setting limit= in GET string
   obj.limit = parseInt(req.query.limit, 10) || 1000;
@@ -564,7 +378,7 @@ function checkValidParams(query_params) {
 
   const keys = Object.keys(query_params);
 
-  const valid_keys = ['pretty', 'field', 'state', 'county', 'sumlev', 'place', 'geonum', 'geoid', 'db', 'schema', 'geo', 'series', 'type', 'limit', 'moe', 'table', 'meta'];
+  const valid_keys = ['pretty', 'field', 'state', 'county', 'sumlev', 'place', 'geonum', 'geoid', 'db', 'schema', 'type', 'limit', 'moe', 'table', 'meta'];
 
   keys.forEach(key => {
     if (valid_keys.indexOf(key) === -1) {
@@ -621,4 +435,167 @@ function getTableArray(fields) {
   table_list = table_list.filter(onlyUnique);
 
   return table_list;
+}
+
+
+function mapFieldMetadataQueryResult(field_metadata_query_result) {
+  return field_metadata_query_result.map(d => {
+    const temp_obj = {};
+    temp_obj.column_id = d.column_id;
+    temp_obj.column_title = d.column_verbose;
+    return temp_obj;
+  });
+}
+
+
+function stringifyStatePlaceCounty(query_data) {
+  // convert non-null values of state, place, and county to their string equivalent
+  return query_data.map(d => {
+    d.state = (d.state !== null) ? _h.pad(d.state, 2, '0') : null;
+    d.place = (d.place !== null) ? _h.pad(d.place, 5, '0') : null;
+    d.county = (d.county !== null) ? _h.pad(d.county, 3, '0') : null;
+    return d;
+  });
+}
+
+
+function mapTableMetadataQueryResult(table_metadata_query_result) {
+  return table_metadata_query_result.map(d => {
+    const temp_obj = {};
+    temp_obj.table_id = d.table_id;
+    temp_obj.table_title = d.table_title;
+    temp_obj.universe = d.universe;
+    return temp_obj;
+  });
+}
+
+
+function addMarginOfErrorFields(field_list, moe) {
+
+  // break the comma delimited records from field into an array  
+  let field_array = field_list.split(",");
+
+  const moe_fields = [];
+
+  // if moe is set to yes, add the moe version of each field (push into new array, then merge with existing)
+  if (moe) {
+    logger.info('Adding margin of error fields.');
+
+    // if text _moe doesn't already occur in the field name. funny.  keeping for backwards compatibility.  allows _moe tables in '&table=' param
+    field_array.forEach(d => {
+      if (d.indexOf('_moe') === -1) {
+        moe_fields.push(`${d.slice(0, -3)}_moe${d.slice(-3)}`);
+      }
+    });
+
+    field_array = field_array.concat(moe_fields); // add in MOE fields
+  }
+
+  field_array = field_array.filter(onlyUnique);
+
+  // send moe modified field list back to main field list
+  // if there were no modifications, it was returned back the same (split/join canceled each other out)
+  return field_array.join(',');
+
+}
+
+
+function assembleOutput(promise_output, type, meta, field, db, schema) {
+
+  const query_data = promise_output[0]; // main data object
+
+  if (meta) {
+    var column_metadata = promise_output[1];
+    var table_metadata = promise_output[2];
+  }
+
+  const data_array = stringifyStatePlaceCounty(query_data);
+
+  if (type === 'csv') {
+    return assembleCsvOutput(data_array, column_metadata, meta, field);
+  }
+  else {
+    return assembleJsonOutput(table_metadata, column_metadata, data_array, meta, db, schema);
+  }
+
+}
+
+
+
+function assembleCsvOutput(data_array, column_metadata, meta, field) {
+  logger.info('Customizing for type CSV.');
+
+  // data_array changes from array of objects to array of arrays
+  const data_array_as_csv_array = data_array.map(d => {
+    const keys = Object.keys(d);
+    const temp_array = keys.map(e => {
+      return d[e];
+    });
+    return temp_array;
+  });
+
+  if (meta) {
+    logger.info('Writing CSV metadata.');
+
+    // array for csv field descriptions only
+    const csv_metadata_row = column_metadata.map(d => {
+      return d.column_title;
+    });
+
+    // add metadata to front (on second row)
+    csv_metadata_row.unshift("Geographic Area Name", "State FIPS", "County FIPS", "Place FIPS", "Tract FIPS", "BG FIPS", "Unique ID", "GEOID");
+
+    data_array_as_csv_array.unshift(csv_metadata_row);
+  }
+  else {
+    logger.info('Excluding metadata row from CSV.');
+  }
+
+
+  const field_name_row = field.split(",");
+
+  // add column names to front
+  field_name_row.unshift("geoname", "state", "county", "place", "tract", "bg", "geonum", "geoid");
+  data_array_as_csv_array.unshift(field_name_row);
+
+  return data_array_as_csv_array;
+}
+
+
+
+
+function assembleJsonOutput(table_metadata, column_metadata, data_array, meta, db, schema) {
+  // JSON Output (DEFAULT)
+  logger.info('Customizing for type JSON');
+
+  const json_result = {};
+  json_result.source = db;
+  json_result.schema = schema;
+
+  if (meta) {
+    logger.info('Adding JSON metadata to returned result.');
+    json_result.tablemeta = table_metadata;
+    json_result.fieldmeta = column_metadata;
+  }
+  else {
+    logger.info('Excluding JSON metadata from returned result.');
+  }
+
+  json_result.data = data_array;
+  return json_result;
+}
+
+
+function createQueriedFieldList(query_result) {
+  const queried_fields = []; // columns gathered from table(s?)
+
+  query_result.forEach(d => {
+    if (d.column_name !== 'geonum') {
+      queried_fields.push(d.column_name);
+    }
+  });
+
+  const queried_filed_list = queried_fields.join(','); // field is updated with fields queried from info schema based upon table
+
+  return queried_filed_list;
 }
