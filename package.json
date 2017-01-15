@@ -1,6 +1,6 @@
 {
   "name": "census_api",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "microservices to query nationwide census data from the colorado state demography office online database",
   "main": "index.js",
   "scripts": {

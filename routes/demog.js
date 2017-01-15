@@ -10,7 +10,7 @@
 // --------------------
 // GEOID added (string)
 // GEONUM is now an integer
-// STATE, COUNTY, PLACE now return full string equivalent (you can enter as integers, OR strings in query)
+// STATE, COUNTY, PLACE now return full string equivalent (you can enter as integers, OR strings in query) && SUMLEV!
 // all returned data is now returned as Numbers rather than Strings
 // 'pretty' parameter added to optionally format json output
 // 'meta' added to optionally exclude metadata output
@@ -43,6 +43,9 @@ const getTableArray = require('../helpers/helpers.js').getTableArray;
 const sendToDatabase = require('../helpers/helpers.js').sendToDatabase;
 const sqlList = require('../helpers/helpers.js').sqlList;
 const pad = require('../helpers/helpers.js').pad;
+const getWhereClause = require('../helpers/helpers.js').getWhereClause;
+const createJoinTableList = require('../helpers/helpers.js').createJoinTableList;
+
 
 
 module.exports = (app) => {
@@ -127,42 +130,9 @@ module.exports = (app) => {
 
       return new Promise((resolve, reject) => {
 
-        let where_clause = ""; // working string of 'where' condition to be inserted into sql query
 
-        if (query_parameter.geonum) {
-          // CASE 1:  you have a geonum.  essentially you don't care about anything else.  just get the data for that/those geonum(s)
-          logger.info('CASE 1:  You have a geonum.  Just get the data for that/those geonum(s)');
-
-          if (query_parameter.state || query_parameter.county || query_parameter.sumlev || query_parameter.geoid) {
-            logger.warn('You specified either STATE, COUNTY, SUMLEV or GEOID.  These parameters are ignored when you also specify GEONUM');
-          }
-
-          where_clause = sqlList(query_parameter.geonum, 'geonum');
-        }
-        else if (query_parameter.geoid) {
-          // CASE 2:  you have a geoid. just get the data for that/those geoid(s)
-          logger.info('CASE 2: You have a geoid. just get the data for that/those geoid(s)');
-
-          if (query_parameter.state || query_parameter.county || query_parameter.sumlev) {
-            logger.warn('You specified either STATE, COUNTY or SUMLEV.  These parameters are ignored when you also specify GEOID');
-          }
-
-          const geonum_list = `1${query_parameter.geoid.replace(/,/g, ',1')}`; // convert geoids to geonums
-          where_clause = sqlList(geonum_list, "geonum");
-        }
-        else if (query_parameter.sumlev || query_parameter.county || query_parameter.state) {
-          // CASE 3 - query
-          logger.info('CASE 3: Query using one or all of: sumlev, county, or state.');
-          const condition = getConditionString(query_parameter.sumlev, query_parameter.county, query_parameter.state);
-
-          const countylist = query_parameter.county ? sqlList(query_parameter.county, 'county') : '';
-          const statelist = query_parameter.state ? sqlList(query_parameter.state, 'state') : '';
-          const sumlevlist = query_parameter.sumlev ? sqlList(query_parameter.sumlev, 'sumlev') : '';
-
-          where_clause = constructWhereClause(condition, statelist, countylist, sumlevlist);
-
-        }
-        else {
+        let where_clause = getWhereClause(query_parameter); // working string of 'where' condition to be inserted into sql query
+        if (where_clause === "") {
           // CASE 4: No Geo
           logger.warn('No Geography in query.  Please specify either a geoname, geonum, sumlev, county, or state.');
           reject('No Geography in query.  Please specify either a geoname, geonum, sumlev, county, or state.');
@@ -170,12 +140,7 @@ module.exports = (app) => {
 
         const table_array = getTableArray(query_parameter.field);
 
-        let join_table_list = ""; // working string of tables to be inserted into sql query
-
-        // create a string to add to sql statement
-        table_array.forEach(d => {
-          join_table_list = `${join_table_list} natural join ${query_parameter.schema}.${d}`;
-        });
+        const join_table_list = createJoinTableList(table_array, query_parameter.schema);
 
         // CONSTRUCT MAIN SQL STATEMENT
         const sql = `SELECT geoname, state, county, place, tract, bg, geonum, geoid, ${query_parameter.field} from search.${query_parameter.schema}${join_table_list} where${where_clause} limit ${query_parameter.limit};`;
@@ -268,24 +233,6 @@ module.exports = (app) => {
 
 
 
-
-
-
-
-
-
-function getConditionString(sumlev, county, state) {
-  // condition is going to be a 3 character string which identifies sumlev, county, state (yes/no) (1,0)
-
-  let condition = "";
-  sumlev ? condition = "1" : "0";
-  county ? condition += "1" : condition += "0";
-  state ? condition += "1" : condition += "0";
-
-  return condition;
-}
-
-
 function getParams(req) {
 
   checkValidParams(req.query);
@@ -336,38 +283,6 @@ function checkValidParams(query_params) {
 
 }
 
-
-function constructWhereClause(condition, statelist, countylist, sumlevlist) {
-
-  let joinlist = "";
-  logger.info('Constructing WHERE clause using a combination of state, county and sumlev.');
-
-  switch (condition) {
-  case '001':
-    joinlist = ` (${statelist}) `;
-    break;
-  case '011':
-    joinlist = ` (${countylist}) and (${statelist}) `;
-    break;
-  case '111':
-    joinlist = ` (${sumlevlist}) and (${countylist}) and (${statelist}) `;
-    break;
-  case '010':
-    joinlist = ` (${countylist}) `;
-    break;
-  case '110':
-    joinlist = ` (${sumlevlist}) and (${countylist})`;
-    break;
-  case '100':
-    joinlist = ` (${sumlevlist}) `;
-    break;
-  case '101':
-    joinlist = ` (${sumlevlist}) and (${statelist}) `;
-    break;
-  }
-
-  return joinlist;
-}
 
 
 
