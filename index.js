@@ -17,6 +17,7 @@ app.use(allowCrossDomain);
 require("./routes/meta.js")(app);
 require("./routes/demog.js")(app);
 require("./routes/geojson.js")(app);
+require("./routes/plaingeo.js")(app);
 
 
 var server = app.listen(8080, function () {
